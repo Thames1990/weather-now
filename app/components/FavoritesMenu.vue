@@ -20,7 +20,7 @@ const emit = defineEmits<{
     </UTooltip>
 
     <template #content>
-      <div class="w-64 p-2">
+      <div class="w-[min(18rem,calc(100vw-2rem))] p-2">
         <p class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted">{{ $t('favoriteCities') }}</p>
         <p v-if="!favorites.length" class="px-1 pb-1 text-sm text-muted">{{ $t('noFavoritesYet') }}</p>
         <ul v-else class="flex flex-col gap-0.5">

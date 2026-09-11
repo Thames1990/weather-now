@@ -4,3 +4,49 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
+
+:root {
+  color-scheme: light dark;
+  --app-bg: #edf3f7;
+  --panel-bg: rgba(255, 255, 255, 0.72);
+  --panel-border: rgba(148, 163, 184, 0.38);
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(125, 211, 252, 0.22), transparent 18%),
+    radial-gradient(circle at bottom right, rgba(191, 219, 254, 0.3), transparent 22%),
+    var(--app-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  max-width: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

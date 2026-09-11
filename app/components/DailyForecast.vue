@@ -37,13 +37,13 @@ const columns = computed<TableColumn<Row>[]>(() => [
 </script>
 
 <template>
-  <UCard class="h-full" :ui="{ root: 'h-full flex flex-col', body: 'flex-1 overflow-hidden' }">
+  <UCard data-testid="daily-forecast-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 overflow-x-auto' }">
     <template #header>
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-highlighted">{{ $t('sevenDayOutlook') }}</h2>
         <UBadge color="neutral" variant="subtle" size="sm" icon="i-lucide-sunrise">{{ $t('sunrise', { value: sunrise ? formatHour(sunrise, locale) : '—' }) }}</UBadge>
       </div>
     </template>
-    <UTable :data="rows" :columns="columns" :empty="$t('buildingWeek')" class="h-full" :ui="{ th: 'py-1.5 px-3', td: 'py-1 px-3', tr: 'hover:bg-elevated transition-colors' }" />
+    <UTable :data="rows" :columns="columns" :empty="$t('buildingWeek')" class="h-full min-w-[420px]" :ui="{ th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
   </UCard>
 </template>

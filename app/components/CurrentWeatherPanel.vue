@@ -42,7 +42,7 @@ defineEmits<{
 </script>
 
 <template>
-  <UCard class="h-full" :ui="{ root: 'h-full flex flex-col', body: 'flex-1 flex flex-col justify-center', footer: 'shrink-0' }">
+  <UCard data-testid="current-weather-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-center', footer: 'shrink-0' }">
     <template #header>
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
