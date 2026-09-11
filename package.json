@@ -1,0 +1,36 @@
+{
+  "name": "weather-now",
+  "description": "Weather Now is a Nuxt weather dashboard with location search, current conditions, forecasts, and clothing guidance.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nuxt/fonts": "^0.14.0",
+    "@nuxt/ui": "^4.11.1",
+    "@nuxtjs/i18n": "^10.6.0",
+    "nuxt": "^4.5.2",
+    "vue": "^3.5.42",
+    "vue-router": "^5.3.1"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
+    "@vue/test-utils": "^2.5.0",
+    "eslint": "^10.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0",
+    "vue-tsc": "^3.3.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "typescript": "5.9.3"
+    }
+  }
+}
