@@ -2,12 +2,8 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  modules: ['@nuxt/ui', '@nuxt/fonts', '@nuxtjs/i18n', '@nuxt/eslint'],
-  components: [
-    { path: '~/components/charts', pathPrefix: false },
-    '~/components'
-  ],
   app: {
+    baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
       title: 'Weather Now — Live conditions and forecasts',
       meta: [
@@ -19,6 +15,16 @@ export default defineNuxtConfig({
       ]
     }
   },
+  runtimeConfig: {
+    public: {
+      apiMode: process.env.NUXT_PUBLIC_API_MODE || 'server'
+    }
+  },
+  modules: ['@nuxt/ui', '@nuxt/fonts', '@nuxtjs/i18n', '@nuxt/eslint'],
+  components: [
+    { path: '~/components/charts', pathPrefix: false },
+    '~/components'
+  ],
   experimental: {
     viewTransition: true
   },
