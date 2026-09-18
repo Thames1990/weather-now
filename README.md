@@ -35,6 +35,16 @@ pnpm build
 pnpm preview
 ```
 
+## GitHub Pages
+
+Every push to `main` generates and deploys the static site to
+https://thames1990.github.io/weather-now/. The workflow uses the repository
+subpath and calls the public Open-Meteo, BigDataCloud, and ipinfo APIs directly,
+so the existing site at https://thames1990.github.io/ is not replaced.
+
+In the repository settings, set **Pages → Source** to **GitHub Actions** once
+before the first deployment.
+
 ## Validation
 
 ```bash

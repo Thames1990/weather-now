@@ -20,9 +20,30 @@ const loadingLocation: LocationResult = {
   timezone: 'auto'
 }
 const savedLocationKey = 'weather-now:last-location'
+const currentParams = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
+const hourlyParams = 'temperature_2m,precipitation_probability,precipitation,weather_code'
+const dailyParams = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
+
+interface ExternalGeocodeResponse {
+  results?: LocationResult[]
+}
+
+interface ExternalReverseGeocodeResponse {
+  city?: string
+  locality?: string
+  principalSubdivision?: string
+  countryName?: string
+}
+
+interface ExternalIpLocationResponse {
+  city?: string
+  country?: string
+  loc?: string
+}
 
 export function useWeather() {
   const { locale } = useI18n()
+  const config = useRuntimeConfig()
   const weather = ref<WeatherResponse | null>(null)
   const selectedLocation = ref<LocationResult>(loadingLocation)
   const query = ref('')
@@ -61,15 +82,33 @@ export function useWeather() {
     }))
   })
 
+  async function fetchWeatherData(location: LocationResult): Promise<WeatherResponse> {
+    if (config.public.apiMode !== 'external') {
+      return await $fetch<WeatherResponse>('/api/weather', {
+        query: { latitude: location.latitude, longitude: location.longitude }
+      })
+    }
+
+    return await $fetch<WeatherResponse>('https://api.open-meteo.com/v1/forecast', {
+      query: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        current: currentParams,
+        hourly: hourlyParams,
+        daily: dailyParams,
+        timezone: 'auto',
+        forecast_days: 7
+      }
+    })
+  }
+
   async function fetchWeather(location: LocationResult) {
     const requestId = ++weatherRequestId
     isLoading.value = true
     errorMessage.value = ''
     selectedLocation.value = location
     try {
-      const response = await $fetch<WeatherResponse>('/api/weather', {
-        query: { latitude: location.latitude, longitude: location.longitude }
-      })
+      const response = await fetchWeatherData(location)
       if (requestId !== weatherRequestId) return // a newer request has superseded this one
       weather.value = response
       if (import.meta.client) localStorage.setItem(savedLocationKey, JSON.stringify(location))
@@ -86,9 +125,13 @@ export function useWeather() {
     if (normalizedQuery.length < 2) return
     isSearching.value = true
     try {
-      const response = await $fetch<{ results?: LocationResult[] }>('/api/geocode', {
-        query: { name: normalizedQuery, language: locale.value }
-      })
+      const response = config.public.apiMode === 'external'
+        ? await $fetch<ExternalGeocodeResponse>('https://geocoding-api.open-meteo.com/v1/search', {
+            query: { name: normalizedQuery, count: 5, language: locale.value, format: 'json' }
+          })
+        : await $fetch<ExternalGeocodeResponse>('/api/geocode', {
+            query: { name: normalizedQuery, language: locale.value }
+          })
       if (query.value.trim() === normalizedQuery) searchResults.value = response.results ?? []
     } catch {
       if (query.value.trim() === normalizedQuery) searchResults.value = []
@@ -105,23 +148,36 @@ export function useWeather() {
 
   async function locationFromCoordinates(latitude: number, longitude: number): Promise<LocationResult> {
     try {
-      const place = await $fetch<{ name?: string; country?: string }>('/api/reverse-geocode', {
-        query: { latitude, longitude }
-      })
-      return { name: place.name || CURRENT_LOCATION_FALLBACK_NAME, country: place.country || '', latitude, longitude, timezone: 'auto' }
+      const place = config.public.apiMode === 'external'
+        ? await $fetch<ExternalReverseGeocodeResponse>('https://api.bigdatacloud.net/data/reverse-geocode-client', {
+            query: { latitude, longitude, localityLanguage: 'en' }
+          })
+        : await $fetch<{ name?: string; country?: string }>('/api/reverse-geocode', {
+            query: { latitude, longitude }
+          })
+      const name = 'name' in place
+        ? place.name
+        : place.city || place.locality || place.principalSubdivision
+      const country = 'country' in place ? place.country : place.countryName
+      return { name: name || CURRENT_LOCATION_FALLBACK_NAME, country: country || '', latitude, longitude, timezone: 'auto' }
     } catch {
       return { name: CURRENT_LOCATION_FALLBACK_NAME, country: '', latitude, longitude, timezone: 'auto' }
     }
   }
 
   async function locationFromIp(): Promise<LocationResult> {
-    const place = await $fetch<{ name?: string; country?: string; latitude?: number; longitude?: number }>('/api/ip-location')
-    if (!Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) throw new Error('IP location coordinates unavailable')
+    const place = config.public.apiMode === 'external'
+      ? await $fetch<ExternalIpLocationResponse>('https://ipinfo.io/json')
+      : await $fetch<{ name?: string; country?: string; latitude?: number; longitude?: number }>('/api/ip-location')
+    const [latitude, longitude] = 'loc' in place
+      ? (place.loc || '').split(',').map(Number)
+      : [place.latitude, place.longitude]
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error('IP location coordinates unavailable')
     return {
-      name: place.name || CURRENT_LOCATION_FALLBACK_NAME,
+      name: ('name' in place ? place.name : place.city) || CURRENT_LOCATION_FALLBACK_NAME,
       country: place.country || '',
-      latitude: place.latitude!,
-      longitude: place.longitude!,
+      latitude,
+      longitude,
       timezone: 'auto'
     }
   }
