@@ -5,6 +5,7 @@ import type { DailyForecast as DailyForecastItem } from '~/types/weather'
 import { formatDay, formatHour, weatherIcon, weatherLabel } from '~/utils/weather'
 
 const { locale, t } = useI18n()
+const isReady = useAppReady()
 
 const props = defineProps<{
   forecast: DailyForecastItem[]
@@ -41,10 +42,24 @@ const columns = computed<TableColumn<Row>[]>(() => [
   <UCard data-testid="daily-forecast-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 overflow-x-auto' }">
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="text-lg font-semibold text-highlighted">{{ $t('sevenDayOutlook') }}</h2>
-        <UBadge color="neutral" variant="subtle" size="sm" icon="i-lucide-sunrise">{{ $t('sunrise', { value: sunrise ? formatHour(sunrise, locale, timezone) : '—' }) }}</UBadge>
+        <h2 class="text-lg font-semibold text-highlighted">
+          <span v-if="isReady" class="wn-fade-in">{{ $t('sevenDayOutlook') }}</span>
+          <USkeleton v-else as="span" class="my-1 block h-5 w-40" />
+        </h2>
+        <UBadge v-if="isReady && sunrise" class="wn-fade-in" color="neutral" variant="subtle" size="sm" icon="i-lucide-sunrise">{{ $t('sunrise', { value: formatHour(sunrise, locale, timezone) }) }}</UBadge>
+        <USkeleton v-else class="h-5 w-28 rounded-md" />
       </div>
     </template>
-    <UTable :data="rows" :columns="columns" :empty="$t('buildingWeek')" class="h-full min-w-[420px]" :ui="{ th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
+    <UTable v-if="isReady && rows.length" :data="rows" :columns="columns" class="wn-fade-in h-full min-w-[420px]" :ui="{ th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
+    <div v-else class="min-w-[420px] divide-y divide-default" aria-hidden="true">
+      <div v-for="index in 8" :key="index" class="grid grid-cols-[3fr_2fr_5fr_5fr_4.5fr] items-center gap-3 px-3" :class="index === 1 ? 'py-2' : 'py-1.5'">
+        <USkeleton class="h-3.5 w-14" />
+        <USkeleton v-if="index > 1" class="size-5 rounded-full" />
+        <span v-else />
+        <USkeleton class="h-3.5 w-24" />
+        <USkeleton class="h-3.5 w-12" />
+        <USkeleton class="h-3.5 w-16" />
+      </div>
+    </div>
   </UCard>
 </template>
