@@ -8,6 +8,7 @@ const { locale, t } = useI18n()
 const props = defineProps<{
   location: LocationResult
   current: WeatherResponse['current'] | undefined
+  timezone: string | undefined
   condition: string
   icon: string
   effect: string
@@ -71,7 +72,7 @@ defineEmits<{
 
     <template #footer>
       <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span>{{ isLoading ? $t('refreshingConditions') : $t('updated', { value: current ? formatHour(current.time, locale) : $t('now') }) }}</span>
+        <span>{{ isLoading ? $t('refreshingConditions') : $t('updated', { value: current ? formatHour(current.time, locale, timezone) : $t('now') }) }}</span>
         <UTooltip :text="$t('humidityTooltip')">
           <UBadge color="neutral" variant="subtle" size="sm" class="cursor-default">{{ current ? $t('humidity', { value: current.relative_humidity_2m }) : $t('readingConditions') }}</UBadge>
         </UTooltip>

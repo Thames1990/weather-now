@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ClothingGender } from '~/utils/clothing'
-import { formatDay, formatHour } from '~/utils/weather'
+import { formatDay, hourlyLabels } from '~/utils/weather'
 
 const {
   weather,
@@ -20,7 +20,8 @@ const {
   chooseLocation,
   useCurrentLocation
 } = useWeather()
-const { locale } = useI18n()
+const { locale, t } = useI18n()
+const hourlyTimeLabels = computed(() => hourlyLabels(hourlyForecast.value, locale.value, weather.value?.timezone ?? 'UTC', t('now')))
 const languageOptions = [
   { label: 'EN', value: 'en' },
   { label: 'DE', value: 'de' }
@@ -124,6 +125,7 @@ watch(savedLanguage, (value) => {
               class="min-w-0 col-span-1 lg:col-span-4"
               :location="selectedLocation"
               :current="current"
+              :timezone="weather?.timezone"
               :condition="currentCondition"
               :icon="currentIcon"
               :effect="currentEffect"
@@ -132,16 +134,16 @@ watch(savedLanguage, (value) => {
               @retry="fetchWeather(selectedLocation)"
             />
             <ClothingRecommendation class="min-w-0 col-span-1 lg:col-span-5" :current="current" :gender="clothingGender" @update:gender="updateClothingGender" />
-            <WeatherDetails class="min-w-0 col-span-1 lg:col-span-3" :current="current" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
+            <WeatherDetails class="min-w-0 col-span-1 lg:col-span-3" :current="current" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
 
-            <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :timezone="weather?.timezone" :is-loading="isLoading" />
-            <DailyForecast class="min-w-0 col-span-1 lg:col-span-7" :forecast="dailyForecast" :sunrise="weather?.daily.sunrise[0]" />
+            <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :labels="hourlyTimeLabels" :timezone="weather?.timezone" :is-loading="isLoading" />
+            <DailyForecast class="min-w-0 col-span-1 lg:col-span-7" :forecast="dailyForecast" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" />
 
             <UCard data-testid="temperature-trend-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
                 <h2 class="text-lg font-semibold text-highlighted">{{ $t('temperatureTrend') }}</h2>
               </template>
-              <LineChart v-if="hourlyForecast.length" :values="hourlyForecast.slice(0, 8).map((hour) => hour.temperature)" :labels="hourlyForecast.slice(0, 8).map((hour, index) => (index === 0 ? $t('now') : formatHour(hour.time, locale)))" unit="°" color="var(--ui-primary)" />
+              <LineChart v-if="hourlyForecast.length" :values="hourlyForecast.slice(0, 8).map((hour) => hour.temperature)" :labels="hourlyTimeLabels.slice(0, 8)" unit="°" color="var(--ui-primary)" />
               <p v-else class="text-sm text-muted">{{ $t('readingNextHours') }}</p>
             </UCard>
 
@@ -152,7 +154,7 @@ watch(savedLanguage, (value) => {
               <BarChart
                 v-if="hourlyForecast.length"
                 :values="hourlyForecast.slice(0, 6).map((hour) => hour.precipitationAmount)"
-                :labels="hourlyForecast.slice(0, 6).map((hour, index) => (index === 0 ? $t('now') : formatHour(hour.time, locale)))"
+                :labels="hourlyTimeLabels.slice(0, 6)"
                 unit="mm"
                 color="bg-primary"
                 :format-value="(value) => value.toFixed(1)"

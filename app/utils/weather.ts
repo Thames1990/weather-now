@@ -1,3 +1,5 @@
+import type { HourlyForecast, OpenMeteoWeatherResponse, WeatherResponse } from '~/types/weather'
+
 export function weatherLabel(code: number, locale = 'en') {
   const german = locale === 'de'
   if (code === 0) return german ? 'Klarer Himmel' : 'Clear skies'
@@ -32,9 +34,11 @@ export function weatherEffect(code: number, windSpeed: number) {
   return 'clouds'
 }
 
-export function formatHour(value: string, locale = 'en') {
-  const options = locale === 'de' ? { hour: '2-digit' as const, minute: '2-digit' as const } : { hour: 'numeric' as const }
-  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-US', options).format(new Date(value))
+export function formatHour(value: string, locale = 'en', timezone = 'UTC') {
+  const options: Intl.DateTimeFormatOptions = locale === 'de'
+    ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+    : { hour: 'numeric' }
+  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-US', { ...options, timeZone: timezone }).format(new Date(value))
 }
 
 export function formatDay(value: string, index: number, locale = 'en') {
@@ -48,4 +52,45 @@ export function formatDate(value: string, locale = 'en') {
 
 export function windDirection(degrees: number) {
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(degrees / 45) % 8]
+}
+
+export function normalizeWeather(response: OpenMeteoWeatherResponse): WeatherResponse {
+  const instant = (seconds: number) => new Date(seconds * 1000).toISOString()
+  return {
+    ...response,
+    current: { ...response.current, time: instant(response.current.time) },
+    hourly: { ...response.hourly, time: response.hourly.time.map(instant) },
+    daily: {
+      ...response.daily,
+      // Open-Meteo daily dates use the response's fixed offset, including across
+      // DST. Reapply it per the provider contract; IANA instant formatting here
+      // could shift a daily calendar date backwards after the autumn transition.
+      time: response.daily.time.map(seconds => instant(seconds + response.utc_offset_seconds).slice(0, 10)),
+      sunrise: response.daily.sunrise.map(instant),
+      sunset: response.daily.sunset.map(instant)
+    }
+  }
+}
+
+export function selectHourlyForecast(weather: WeatherResponse, limit = 12): HourlyForecast[] {
+  const currentTime = Date.parse(weather.current.time)
+  const times = weather.hourly.time.map(time => Date.parse(time))
+  const intervalEnd = (index: number) => times[index + 1] ?? times[index]! + 3600000
+  const start = times.findIndex((time, index) => (time <= currentTime && currentTime < intervalEnd(index)) || time > currentTime)
+  if (start === -1) return []
+  return weather.hourly.time.slice(start, start + limit).map((time, index) => {
+    const sourceIndex = start + index
+    return {
+      time,
+      isNow: times[sourceIndex]! <= currentTime && currentTime < intervalEnd(sourceIndex),
+      temperature: Number(weather.hourly.temperature_2m[sourceIndex] ?? 0),
+      precipitation: Number(weather.hourly.precipitation_probability[sourceIndex] ?? 0),
+      precipitationAmount: Number(weather.hourly.precipitation[sourceIndex] ?? 0),
+      code: Number(weather.hourly.weather_code[sourceIndex] ?? 0)
+    }
+  })
+}
+
+export function hourlyLabels(forecast: HourlyForecast[], locale: string, timezone: string, nowLabel: string): string[] {
+  return forecast.map(hour => hour.isNow ? nowLabel : formatHour(hour.time, locale, timezone))
 }
