@@ -44,7 +44,11 @@ onMounted(() => {
   if (!colorMode.value) colorMode.preference = 'dark'
 })
 
-const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavorites()
+const {
+  favorites, isFavorite, toggleFavorite, removeFavorite, displayLocation,
+  isLocalizing, errorMessage: favoriteError, retryLocalization
+} = useFavorites()
+const displayedLocation = computed(() => displayLocation(selectedLocation.value))
 
 const clothingGender = usePersistentState<ClothingGender>('weather-now:clothing-gender', 'neutral')
 const savedLanguage = usePersistentState<'en' | 'de'>('weather-now:language', 'en')
@@ -101,17 +105,17 @@ watch(savedLanguage, (value) => {
                     <UTooltip :text="$t('useCurrentLocation')">
                       <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
                     </UTooltip>
-                    <UTooltip v-if="isReady && current" :text="isFavorite(selectedLocation) ? $t('removeFavorite', { value: selectedLocation.name }) : $t('addFavorite', { value: selectedLocation.name })">
+                    <UTooltip v-if="isReady && current" :text="isFavorite(selectedLocation) ? $t('removeFavorite', { value: displayedLocation.name }) : $t('addFavorite', { value: displayedLocation.name })">
                       <UButton
                         :icon="isFavorite(selectedLocation) ? 'i-lucide-star' : 'i-lucide-star-off'"
                         :color="isFavorite(selectedLocation) ? 'warning' : 'neutral'"
                         variant="ghost"
-                        :aria-label="isFavorite(selectedLocation) ? $t('removeFavorite', { value: selectedLocation.name }) : $t('addFavorite', { value: selectedLocation.name })"
+                        :aria-label="isFavorite(selectedLocation) ? $t('removeFavorite', { value: displayedLocation.name }) : $t('addFavorite', { value: displayedLocation.name })"
                         @click="toggleFavorite(selectedLocation)"
                       />
                     </UTooltip>
                     <USkeleton v-else class="size-8 rounded-md" />
-                    <FavoritesMenu :favorites="favorites" @select="chooseLocation" @remove="removeFavorite" />
+                    <FavoritesMenu :favorites="favorites" :is-localizing="isLocalizing" :error-message="favoriteError" @select="chooseLocation" @remove="removeFavorite" @retry="retryLocalization" />
                     <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-20 sm:w-24" :aria-label="$t('language')" />
                     <USkeleton v-else class="h-8 w-20 rounded-md sm:w-24" />
                     <UButton color="neutral" variant="ghost" square :aria-label="$t('toggleTheme')" @click="toggleColorMode">
@@ -127,7 +131,7 @@ watch(savedLanguage, (value) => {
           <template #body>
             <CurrentWeatherPanel
               class="min-w-0 col-span-1 lg:col-span-4"
-              :location="selectedLocation"
+              :location="displayedLocation"
               :current="current"
               :timezone="weather?.timezone"
               :condition="currentCondition"

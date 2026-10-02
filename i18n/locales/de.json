@@ -8,6 +8,8 @@
   "noFavoritesYet": "Noch keine Favoriten. Nutze das Stern-Symbol, um eine Stadt zu speichern.",
   "addFavorite": "{value} zu Favoriten hinzufügen",
   "removeFavorite": "{value} aus Favoriten entfernen",
+  "loadingFavoriteNames": "Stadtnamen in allen Sprachen werden geladen…",
+  "errorFavoriteLocalization": "Einige Stadtnamen konnten nicht übersetzt werden. Deine Favoriten sind gespeichert. Prüfe deine Verbindung und versuche es erneut.",
   "nowIn": "Aktuelle Bedingungen",
   "yourCoordinates": "Aktuelle Position",
   "forecastUnavailable": "Vorhersage nicht verfügbar",

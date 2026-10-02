@@ -7,7 +7,7 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 - Search for cities and use current location detection
 - View current weather conditions and detailed metrics
 - Explore hourly and 7-day forecasts
-- Save favorite locations
+- Save favorite locations with city and region names in every selectable language
 - Switch locales and adjust clothing recommendations
 - Responsive, accessible UI built with Nuxt and Nuxt UI
 
@@ -18,6 +18,14 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 - TypeScript
 - Nuxt UI
 - Open-Meteo and geocoding APIs via Nitro server routes
+
+## Favorites
+
+Favorites automatically follow the selected language, including cities saved
+before multilingual favorites were introduced. Names are stored on your device
+for offline language switching. Existing favorites are updated when the app
+opens; if a lookup fails, the original city is kept and the favorites menu offers
+a retry.
 
 ## Local development
 

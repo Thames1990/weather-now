@@ -135,6 +135,7 @@ export function parseGeocodingResults(value: unknown): LocationResult[] {
 
   return results.map((result): LocationResult => {
     if (!isObject(result)
+      || (result.id !== undefined && (!Number.isSafeInteger(result.id) || Number(result.id) <= 0))
       || !isNonEmptyString(result.name)
       || !isFiniteNumber(result.latitude)
       || !isFiniteNumber(result.longitude)
@@ -151,6 +152,7 @@ export function parseGeocodingResults(value: unknown): LocationResult[] {
       longitude: result.longitude,
       timezone: result.timezone
     }
+    if (typeof result.id === 'number') location.id = result.id
     if (typeof result.admin1 === 'string') location.admin1 = result.admin1
     return location
   })
