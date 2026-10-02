@@ -14,6 +14,40 @@ const chartCardTestIds = [
   'sun-hours-card'
 ]
 
+const chartHourlyTimes = Array.from({ length: 8 }, (_, index) => `2026-10-02T${String(10 + index).padStart(2, '0')}:00`)
+const chartWeatherResponse = {
+  timezone: 'UTC',
+  current: {
+    time: chartHourlyTimes[0],
+    temperature_2m: 18,
+    relative_humidity_2m: 68,
+    apparent_temperature: 18,
+    is_day: 1,
+    precipitation: 0,
+    weather_code: 1,
+    wind_speed_10m: 5,
+    wind_direction_10m: 0
+  },
+  hourly: {
+    time: chartHourlyTimes,
+    temperature_2m: [18, 19, 19, 20, 20, 20, 19, 18],
+    precipitation_probability: Array(8).fill(0),
+    precipitation: Array(8).fill(0),
+    weather_code: Array(8).fill(1)
+  },
+  daily: {
+    time: ['2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'],
+    weather_code: Array(7).fill(1),
+    temperature_2m_max: Array(7).fill(20),
+    temperature_2m_min: Array(7).fill(12),
+    precipitation_probability_max: Array(7).fill(0),
+    precipitation_sum: Array(7).fill(0),
+    sunshine_duration: Array(7).fill(28800),
+    sunrise: Array(7).fill('2026-10-02T07:00'),
+    sunset: Array(7).fill('2026-10-02T19:00')
+  }
+}
+
 test.describe('responsive dashboard layout', () => {
   test('renders every dashboard card with real height and no horizontal overflow', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
@@ -63,6 +97,7 @@ test.describe('responsive dashboard layout', () => {
   })
 
   test('renders the temperature, precipitation, and sun-hours charts with real height', async ({ page }) => {
+    await page.route('**/api/weather**', (route) => route.fulfill({ json: chartWeatherResponse }))
     await page.goto('/', { waitUntil: 'networkidle' })
 
     for (const testId of chartCardTestIds) {
@@ -76,6 +111,31 @@ test.describe('responsive dashboard layout', () => {
 
       const chart = card.locator('[role="img"]').first()
       await expect(chart).toBeVisible()
+    }
+
+    const temperatureChart = page.getByTestId('temperature-trend-card').getByRole('img')
+    const temperatureChartBox = await temperatureChart.boundingBox()
+    expect(temperatureChartBox).not.toBeNull()
+
+    const markers = page.getByTestId('line-chart-marker')
+    const markerGeometry = await markers.evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = (element as HTMLElement).style
+      return {
+        left: Number.parseFloat(style.left),
+        top: Number.parseFloat(style.top),
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height
+      }
+    }))
+
+    expect(markerGeometry.length).toBeGreaterThan(0)
+    for (const marker of markerGeometry) {
+      expect(Math.abs(marker.width - marker.height)).toBeLessThan(0.1)
+      expect(Math.abs(marker.centerX - (temperatureChartBox!.x + temperatureChartBox!.width * marker.left / 100))).toBeLessThan(1)
+      expect(Math.abs(marker.centerY - (temperatureChartBox!.y + temperatureChartBox!.height * marker.top / 100))).toBeLessThan(1)
     }
   })
 

@@ -49,6 +49,19 @@ function labelStyle(point: { x: number, y: number }, index: number) {
     transform: `translate(${xOffset}, calc(-100% - 10px))`
   }
 }
+
+function markerStyle(point: { x: number, y: number }, index: number) {
+  const size = activeIndex.value === index ? '20px' : '12px'
+  return {
+    left: `${point.x}%`,
+    top: `${(point.y / viewBoxHeight) * 100}%`,
+    width: size,
+    height: size,
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: props.color || 'var(--ui-primary)',
+    border: '1px solid var(--ui-bg)'
+  }
+}
 </script>
 
 <template>
@@ -88,17 +101,15 @@ function labelStyle(point: { x: number, y: number }, index: number) {
         <path :d="areaPath" :fill="`url(#${gradientId})`" stroke="none" />
         <path :d="linePath" fill="none" :stroke="color || 'var(--ui-primary)'" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
         <line v-if="active" :x1="active.x" :x2="active.x" y1="0" :y2="viewBoxHeight" class="text-muted" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" />
-        <circle
-          v-for="(point, index) in points"
-          :key="index"
-          :cx="point.x"
-          :cy="point.y"
-          :r="activeIndex === index ? 2 : 1.1"
-          :fill="color || 'var(--ui-primary)'"
-          stroke="var(--ui-bg)"
-          :stroke-width="activeIndex === index ? 1 : 0.6"
-        />
       </svg>
+      <span
+        v-for="(point, index) in points"
+        :key="index"
+        data-testid="line-chart-marker"
+        aria-hidden="true"
+        class="pointer-events-none absolute z-0 box-border rounded-full"
+        :style="markerStyle(point, index)"
+      />
     </div>
     <div class="mt-2 flex shrink-0 justify-between text-xs text-muted">
       <span v-for="(label, index) in labels" :key="index" class="flex-1 text-center first:text-left last:text-right">{{ label }}</span>
