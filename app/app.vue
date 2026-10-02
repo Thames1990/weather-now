@@ -131,7 +131,7 @@ watch(savedLanguage, (value) => {
               :error-message="errorMessage"
               @retry="fetchWeather(selectedLocation)"
             />
-            <ClothingRecommendation class="min-w-0 col-span-1 lg:col-span-5" :current="current" :gender="clothingGender" @update:gender="updateClothingGender" />
+            <ClothingRecommendation class="min-w-0 col-span-1 lg:col-span-5" :current="current" :hourly="hourlyForecast" :gender="clothingGender" @update:gender="updateClothingGender" />
             <WeatherDetails class="min-w-0 col-span-1 lg:col-span-3" :current="current" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
 
             <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :timezone="weather?.timezone" :is-loading="isLoading" />
