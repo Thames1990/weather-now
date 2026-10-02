@@ -21,6 +21,7 @@ export type ClothingRecommendation = {
 }
 
 const wetWeatherCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]
+const snowWeatherCodes = [71, 73, 75, 77, 85, 86]
 
 export function clothingRecommendation(
   current: WeatherResponse['current'] | undefined,
@@ -46,10 +47,11 @@ export function clothingRecommendation(
   const lowFeelsLike = Math.min(...feelsLike)
   const highFeelsLike = Math.max(...feelsLike)
   const wind = Math.round(Math.max(current.wind_speed_10m, ...nextHours.map(hour => hour.windSpeed)))
-  const rain = Math.max(0, ...nextHours.map(hour => hour.precipitation))
+  const rainHours = nextHours.filter(hour => !snowWeatherCodes.includes(hour.code))
+  const rain = Math.max(0, ...rainHours.map(hour => hour.precipitation))
   const isWet = wetWeatherCodes.includes(current.weather_code)
-    || current.precipitation > 0
-    || nextHours.some(hour => wetWeatherCodes.includes(hour.code) || hour.precipitationAmount > 0)
+    || (current.precipitation > 0 && !snowWeatherCodes.includes(current.weather_code))
+    || nextHours.some(hour => wetWeatherCodes.includes(hour.code) || (hour.precipitationAmount > 0 && !snowWeatherCodes.includes(hour.code)))
     || rain >= 40
   const isCold = lowFeelsLike < 10
   const isWarm = lowFeelsLike >= 21

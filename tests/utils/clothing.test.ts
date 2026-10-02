@@ -45,6 +45,17 @@ describe('clothingRecommendation', () => {
     expect(result.pieces.map(piece => piece.label)).toContain('wearWaterproofJacket')
   })
 
+  it('does not present snow probability or accumulation as rain', () => {
+    const result = clothingRecommendation(
+      current({ weather_code: 71, precipitation: 1 }),
+      [hour({ code: 71, precipitation: 80, precipitationAmount: 1 })],
+      'neutral'
+    )
+    expect(result.accent).not.toBe('wet')
+    expect(result.forecast?.rain).toBe(0)
+    expect(result.pieces.map(piece => piece.label)).not.toContain('wearCompactUmbrella')
+  })
+
   it('accounts for current precipitation without presenting it as a forecast probability', () => {
     const result = clothingRecommendation(current({ precipitation: 1 }), [], 'neutral')
     expect(result.accent).toBe('wet')
