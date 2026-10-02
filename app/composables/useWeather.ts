@@ -21,7 +21,7 @@ const loadingLocation: LocationResult = {
 }
 const savedLocationKey = 'weather-now:last-location'
 const currentParams = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
-const hourlyParams = 'temperature_2m,precipitation_probability,precipitation,weather_code'
+const hourlyParams = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m'
 const dailyParams = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
 
 interface ExternalGeocodeResponse {
@@ -64,9 +64,11 @@ export function useWeather() {
     return weather.value.hourly.time.slice(start, start + 12).map((time, index) => ({
       time,
       temperature: Number(weather.value!.hourly.temperature_2m[start + index] ?? 0),
+      apparentTemperature: Number(weather.value!.hourly.apparent_temperature[start + index] ?? weather.value!.current.apparent_temperature),
       precipitation: Number(weather.value!.hourly.precipitation_probability[start + index] ?? 0),
       precipitationAmount: Number(weather.value!.hourly.precipitation[start + index] ?? 0),
-      code: Number(weather.value!.hourly.weather_code[start + index] ?? 0)
+      code: Number(weather.value!.hourly.weather_code[start + index] ?? 0),
+      windSpeed: Number(weather.value!.hourly.wind_speed_10m[start + index] ?? weather.value!.current.wind_speed_10m)
     }))
   })
   const dailyForecast = computed<DailyForecast[]>(() => {
