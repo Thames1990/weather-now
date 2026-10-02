@@ -43,10 +43,6 @@ function hasNumericSeries(record: ProviderObject, timeKey: string, valueKeys: st
     })
 }
 
-function hasNumericFields(record: ProviderObject, keys: string[]): boolean {
-  return keys.every(key => isFiniteNumber(record[key]))
-}
-
 function isWeatherCode(value: unknown): value is number {
   return isFiniteNumber(value) && Number.isInteger(value) && value >= 0
 }
@@ -60,23 +56,25 @@ export function isOpenMeteoWeatherResponse(value: unknown): value is OpenMeteoWe
   const daily = value.daily
   if (!isObject(current) || !isObject(hourly) || !isObject(daily)) return false
 
+  const relativeHumidity = current.relative_humidity_2m
+  const precipitation = current.precipitation
+  const windSpeed = current.wind_speed_10m
+  const windDirection = current.wind_direction_10m
   if (!isValidUnixSeconds(current.time)
-    || !hasNumericFields(current, [
-      'temperature_2m',
-      'relative_humidity_2m',
-      'apparent_temperature',
-      'precipitation',
-      'wind_speed_10m',
-      'wind_direction_10m'
-    ])
+    || !isFiniteNumber(current.temperature_2m)
+    || !isFiniteNumber(relativeHumidity)
+    || !isFiniteNumber(current.apparent_temperature)
+    || !isFiniteNumber(precipitation)
+    || !isFiniteNumber(windSpeed)
+    || !isFiniteNumber(windDirection)
     || !isWeatherCode(current.weather_code)
     || (current.is_day !== 0 && current.is_day !== 1)
-    || current.relative_humidity_2m < 0
-    || current.relative_humidity_2m > 100
-    || current.precipitation < 0
-    || current.wind_speed_10m < 0
-    || current.wind_direction_10m < 0
-    || current.wind_direction_10m > 360) return false
+    || relativeHumidity < 0
+    || relativeHumidity > 100
+    || precipitation < 0
+    || windSpeed < 0
+    || windDirection < 0
+    || windDirection > 360) return false
 
   if (!hasNumericSeries(hourly, 'time', [
     'temperature_2m',
