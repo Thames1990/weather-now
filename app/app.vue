@@ -10,13 +10,16 @@ const {
   searchResults,
   isLoading,
   isSearching,
+  hasSearched,
   errorMessage,
+  searchError,
   currentCondition,
   currentIcon,
   currentEffect,
   hourlyForecast,
   dailyForecast,
   fetchWeather,
+  searchLocations,
   chooseLocation,
   useCurrentLocation
 } = useWeather()
@@ -89,8 +92,11 @@ watch(savedLanguage, (value) => {
                     :query="query"
                     :results="searchResults"
                     :is-searching="isSearching"
+                    :has-searched="hasSearched"
+                    :error-message="searchError"
                     @update:query="query = $event"
                     @select="chooseLocation"
+                    @retry="searchLocations"
                   />
                   <div class="order-2 flex flex-wrap items-center gap-1.5 sm:order-none sm:flex-nowrap sm:gap-2">
                     <UTooltip :text="$t('useCurrentLocation')">

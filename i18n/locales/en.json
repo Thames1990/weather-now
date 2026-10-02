@@ -1,6 +1,8 @@
 {
   "brand": "Weather Now",
   "searchPlaceholder": "Search a city",
+  "noLocationsFound": "No matching locations found.",
+  "retrySearch": "Retry search",
   "useCurrentLocation": "Use my current location",
   "favoriteCities": "Favorite cities",
   "noFavoritesYet": "No favorite cities yet. Use the star icon to save one.",
@@ -11,6 +13,7 @@
   "forecastUnavailable": "Forecast unavailable",
   "tryAgain": "Try again",
   "errorForecastUnavailable": "The forecast could not be loaded. Check your connection and try again.",
+  "errorSearchUnavailable": "Location search is temporarily unavailable. Check your connection and try again.",
   "errorLocationUnsupported": "Location services are not available in this browser.",
   "errorLocationNotFound": "We could not determine your location. Search for a city instead.",
   "checkingYourLocation": "Loading your location",

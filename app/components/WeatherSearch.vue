@@ -5,11 +5,14 @@ const props = defineProps<{
   query: string
   results: LocationResult[]
   isSearching: boolean
+  hasSearched: boolean
+  errorMessage: string
 }>()
 
 const emit = defineEmits<{
   'update:query': [value: string]
   select: [location: LocationResult]
+  retry: []
 }>()
 
 const items = computed(() => props.results.map((result) => ({
@@ -30,16 +33,27 @@ function onSelect(item: { location: LocationResult } | null) {
 </script>
 
 <template>
-  <UInputMenu
-    v-model:open="menuOpen"
-    :search-term="query"
-    :items="items"
-    :loading="isSearching"
-    ignore-filter
-    icon="i-lucide-search"
-    :placeholder="$t('searchPlaceholder')"
-    :aria-label="$t('searchPlaceholder')"
-    @update:search-term="emit('update:query', $event)"
-    @update:model-value="onSelect"
-  />
+  <div class="min-w-0">
+    <UInputMenu
+      v-model:open="menuOpen"
+      :search-term="query"
+      :items="items"
+      :loading="isSearching"
+      ignore-filter
+      icon="i-lucide-search"
+      :placeholder="$t('searchPlaceholder')"
+      :aria-label="$t('searchPlaceholder')"
+      @update:search-term="emit('update:query', $event)"
+      @update:model-value="onSelect"
+    />
+    <div v-if="errorMessage" class="flex items-center justify-between gap-2 px-1 pt-1 text-xs text-error" role="alert">
+      <span>{{ $t(errorMessage) }}</span>
+      <UButton color="error" variant="link" size="xs" @click="emit('retry')">
+        {{ $t('retrySearch') }}
+      </UButton>
+    </div>
+    <p v-else-if="hasSearched && query.trim().length >= 2 && !results.length" class="px-1 pt-1 text-xs text-muted" role="status">
+      {{ $t('noLocationsFound') }}
+    </p>
+  </div>
 </template>
