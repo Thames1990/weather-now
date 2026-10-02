@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { HourlyForecast as HourlyForecastItem } from '~/types/weather'
-import { formatHour, weatherIcon, weatherLabel } from '~/utils/weather'
+import { weatherIcon, weatherLabel } from '~/utils/weather'
 
 const { locale } = useI18n()
 
 const props = defineProps<{
   forecast: HourlyForecastItem[]
+  labels: string[]
   timezone: string | undefined
   isLoading: boolean
 }>()
@@ -24,8 +25,8 @@ const visibleForecast = computed(() => props.forecast.slice(0, 6))
     <div v-if="visibleForecast.length" class="grid w-full flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-6 md:gap-0 md:divide-x md:divide-default">
       <UTooltip v-for="(hour, index) in visibleForecast" :key="hour.time" :text="`${weatherLabel(hour.code, locale)} · ${Math.round(hour.temperature)}° · ${$t('rain', { value: hour.precipitation })}`">
         <div class="flex h-full min-w-0 flex-col items-center justify-center gap-2 rounded-md px-1.5 py-2 text-center transition-colors hover:bg-elevated md:px-1">
-          <UBadge v-if="index === 0" color="primary" variant="subtle" size="sm">{{ $t('now') }}</UBadge>
-          <span v-else class="text-[10px] text-muted sm:text-xs">{{ formatHour(hour.time, locale) }}</span>
+          <UBadge v-if="hour.isNow" color="primary" variant="subtle" size="sm">{{ labels[index] }}</UBadge>
+          <span v-else class="text-[10px] text-muted sm:text-xs">{{ labels[index] }}</span>
           <span class="text-2xl" aria-hidden="true">{{ weatherIcon(hour.code) }}</span>
           <strong class="text-base font-semibold text-highlighted sm:text-lg">{{ Math.round(hour.temperature) }}°</strong>
           <span class="text-[10px] text-muted sm:text-xs">{{ $t('rain', { value: hour.precipitation }) }}</span>

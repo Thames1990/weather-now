@@ -44,12 +44,25 @@ export type WeatherResponse = {
 
 export type HourlyForecast = {
   time: string
+  isNow: boolean
   temperature: number
   apparentTemperature: number
   precipitation: number
   precipitationAmount: number
   code: number
   windSpeed: number
+}
+
+// Open-Meteo's timeformat=unixtime uses seconds since the UTC epoch.
+export type OpenMeteoWeatherResponse = Omit<WeatherResponse, 'current' | 'hourly' | 'daily'> & {
+  utc_offset_seconds: number
+  current: Omit<WeatherResponse['current'], 'time'> & { time: number }
+  hourly: Omit<WeatherResponse['hourly'], 'time'> & { time: number[] }
+  daily: Omit<WeatherResponse['daily'], 'time' | 'sunrise' | 'sunset'> & {
+    time: number[]
+    sunrise: number[]
+    sunset: number[]
+  }
 }
 
 export type DailyForecast = {

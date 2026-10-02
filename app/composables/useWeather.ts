@@ -1,5 +1,5 @@
-import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } from '~/types/weather'
-import { weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
+import type { DailyForecast, HourlyForecast, LocationResult, OpenMeteoWeatherResponse, WeatherResponse } from '~/types/weather'
+import { normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
 
 const defaultLocation: LocationResult = {
   name: 'London',
@@ -60,16 +60,7 @@ export function useWeather() {
   const currentEffect = computed(() => weatherEffect(current.value?.weather_code ?? 0, current.value?.wind_speed_10m ?? 0))
   const hourlyForecast = computed<HourlyForecast[]>(() => {
     if (!weather.value) return []
-    const start = Math.max(weather.value.hourly.time.indexOf(weather.value.current.time), 0)
-    return weather.value.hourly.time.slice(start, start + 12).map((time, index) => ({
-      time,
-      temperature: Number(weather.value!.hourly.temperature_2m[start + index] ?? 0),
-      apparentTemperature: Number(weather.value!.hourly.apparent_temperature[start + index] ?? weather.value!.current.apparent_temperature),
-      precipitation: Number(weather.value!.hourly.precipitation_probability[start + index] ?? 0),
-      precipitationAmount: Number(weather.value!.hourly.precipitation[start + index] ?? 0),
-      code: Number(weather.value!.hourly.weather_code[start + index] ?? 0),
-      windSpeed: Number(weather.value!.hourly.wind_speed_10m[start + index] ?? weather.value!.current.wind_speed_10m)
-    }))
+    return selectHourlyForecast(weather.value)
   })
   const dailyForecast = computed<DailyForecast[]>(() => {
     if (!weather.value) return []
@@ -91,7 +82,7 @@ export function useWeather() {
       })
     }
 
-    return await $fetch<WeatherResponse>('https://api.open-meteo.com/v1/forecast', {
+    const response = await $fetch<OpenMeteoWeatherResponse>('https://api.open-meteo.com/v1/forecast', {
       query: {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -99,9 +90,11 @@ export function useWeather() {
         hourly: hourlyParams,
         daily: dailyParams,
         timezone: 'auto',
+        timeformat: 'unixtime',
         forecast_days: 7
       }
     })
+    return normalizeWeather(response)
   }
 
   async function fetchWeather(location: LocationResult) {

@@ -6,6 +6,7 @@ const { locale } = useI18n()
 
 defineProps<{
   current: WeatherResponse['current'] | undefined
+  timezone: string | undefined
   sunrise: string | undefined
   sunset: string | undefined
 }>()
@@ -49,14 +50,14 @@ defineProps<{
         <div class="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-elevated">
           <UIcon name="i-lucide-sunrise" class="size-5 text-primary" />
           <span class="text-sm text-muted">{{ $t('sunriseLabel') }}</span>
-          <strong class="text-right whitespace-nowrap">{{ sunrise ? formatHour(sunrise, locale) : '--' }}</strong>
+          <strong class="text-right whitespace-nowrap">{{ sunrise ? formatHour(sunrise, locale, timezone) : '--' }}</strong>
         </div>
       </UTooltip>
       <UTooltip :text="$t('sunsetTooltip')">
         <div class="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5 transition-colors last:pb-0 hover:bg-elevated">
           <UIcon name="i-lucide-sunset" class="size-5 text-primary" />
           <span class="text-sm text-muted">{{ $t('sunsetLabel') }}</span>
-          <strong class="text-right whitespace-nowrap">{{ sunset ? formatHour(sunset, locale) : '--' }}</strong>
+          <strong class="text-right whitespace-nowrap">{{ sunset ? formatHour(sunset, locale, timezone) : '--' }}</strong>
         </div>
       </UTooltip>
     </div>

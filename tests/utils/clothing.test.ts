@@ -20,6 +20,7 @@ function current(overrides: Partial<WeatherResponse['current']> = {}): WeatherRe
 function hour(overrides: Partial<HourlyForecast> = {}): HourlyForecast {
   return {
     time: '2026-09-09T13:00',
+    isNow: false,
     temperature: 18,
     apparentTemperature: 18,
     precipitation: 0,
