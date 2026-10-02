@@ -77,6 +77,31 @@ test.describe('responsive dashboard layout', () => {
       const chart = card.locator('[role="img"]').first()
       await expect(chart).toBeVisible()
     }
+
+    const temperatureChart = page.getByTestId('temperature-trend-card').getByRole('img')
+    const temperatureChartBox = await temperatureChart.boundingBox()
+    expect(temperatureChartBox).not.toBeNull()
+
+    const markers = page.getByTestId('line-chart-marker')
+    const markerGeometry = await markers.evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = (element as HTMLElement).style
+      return {
+        left: Number.parseFloat(style.left),
+        top: Number.parseFloat(style.top),
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height
+      }
+    }))
+
+    expect(markerGeometry.length).toBeGreaterThan(0)
+    for (const marker of markerGeometry) {
+      expect(Math.abs(marker.width - marker.height)).toBeLessThan(0.1)
+      expect(Math.abs(marker.centerX - (temperatureChartBox!.x + temperatureChartBox!.width * marker.left / 100))).toBeLessThan(1)
+      expect(Math.abs(marker.centerY - (temperatureChartBox!.y + temperatureChartBox!.height * marker.top / 100))).toBeLessThan(1)
+    }
   })
 
   test('keeps every navbar control reachable and inside the viewport', async ({ page }) => {
