@@ -1,6 +1,8 @@
 {
   "brand": "Weather Now",
   "searchPlaceholder": "Stadt suchen",
+  "noLocationsFound": "Keine passenden Orte gefunden.",
+  "retrySearch": "Suche wiederholen",
   "useCurrentLocation": "Meinen Standort verwenden",
   "favoriteCities": "Favoriten",
   "noFavoritesYet": "Noch keine Favoriten. Nutze das Stern-Symbol, um eine Stadt zu speichern.",
@@ -11,6 +13,7 @@
   "forecastUnavailable": "Vorhersage nicht verfügbar",
   "tryAgain": "Erneut versuchen",
   "errorForecastUnavailable": "Die Vorhersage konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.",
+  "errorSearchUnavailable": "Die Ortssuche ist vorübergehend nicht verfügbar. Prüfe deine Verbindung und versuche es erneut.",
   "errorLocationUnsupported": "Standortdienste sind in diesem Browser nicht verfügbar.",
   "errorLocationNotFound": "Wir konnten deinen Standort nicht bestimmen. Suche stattdessen nach einer Stadt.",
   "checkingYourLocation": "Standort wird geladen",

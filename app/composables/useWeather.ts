@@ -50,9 +50,13 @@ export function useWeather() {
   const searchResults = ref<LocationResult[]>([])
   const isLoading = ref(true)
   const isSearching = ref(false)
+  const hasSearched = ref(false)
   const errorMessage = ref('')
+  const searchError = ref('')
   let searchTimer: ReturnType<typeof setTimeout> | undefined
   let weatherRequestId = 0
+  let searchRequestId = 0
+  let locationRequestId = 0
 
   const current = computed(() => weather.value?.current)
   const currentCondition = computed(() => weatherLabel(current.value?.weather_code ?? 0, locale.value))
@@ -97,7 +101,7 @@ export function useWeather() {
     return normalizeWeather(response)
   }
 
-  async function fetchWeather(location: LocationResult) {
+  async function loadWeather(location: LocationResult) {
     const requestId = ++weatherRequestId
     isLoading.value = true
     errorMessage.value = ''
@@ -115,10 +119,24 @@ export function useWeather() {
     }
   }
 
+  async function fetchWeather(location: LocationResult) {
+    locationRequestId++
+    await loadWeather(location)
+  }
+
   async function searchLocations(searchTerm = query.value) {
+    const requestId = ++searchRequestId
     const normalizedQuery = searchTerm.trim()
-    if (normalizedQuery.length < 2) return
+    if (normalizedQuery.length < 2) {
+      searchResults.value = []
+      searchError.value = ''
+      hasSearched.value = false
+      isSearching.value = false
+      return
+    }
     isSearching.value = true
+    searchError.value = ''
+    hasSearched.value = false
     try {
       const response = config.public.apiMode === 'external'
         ? await $fetch<ExternalGeocodeResponse>('https://geocoding-api.open-meteo.com/v1/search', {
@@ -127,11 +145,19 @@ export function useWeather() {
         : await $fetch<ExternalGeocodeResponse>('/api/geocode', {
             query: { name: normalizedQuery, language: locale.value }
           })
-      if (query.value.trim() === normalizedQuery) searchResults.value = response.results ?? []
+      if (requestId !== searchRequestId || query.value.trim() !== normalizedQuery) return
+      if (response.results !== undefined && !Array.isArray(response.results)) {
+        throw new Error('Invalid location search response')
+      }
+      searchResults.value = response.results ?? []
+      hasSearched.value = true
     } catch {
-      if (query.value.trim() === normalizedQuery) searchResults.value = []
+      if (requestId !== searchRequestId || query.value.trim() !== normalizedQuery) return
+      searchResults.value = []
+      searchError.value = 'errorSearchUnavailable'
+      hasSearched.value = true
     } finally {
-      isSearching.value = false
+      if (requestId === searchRequestId) isSearching.value = false
     }
   }
 
@@ -179,9 +205,15 @@ export function useWeather() {
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
+      locationRequestId++
+      weatherRequestId++
+      isLoading.value = false
       errorMessage.value = 'errorLocationUnsupported'
       return
     }
+    const requestId = ++locationRequestId
+    const isCurrentRequest = () => requestId === locationRequestId
+    weatherRequestId++
     isLoading.value = true
     errorMessage.value = ''
     selectedLocation.value = { name: LOCATING_LOCATION_NAME, country: '', latitude: 0, longitude: 0, timezone: 'auto' }
@@ -190,7 +222,7 @@ export function useWeather() {
     let geoFailed = false
 
     function failIfBothGaveUp() {
-      if (settled || !ipFailed || !geoFailed) return
+      if (!isCurrentRequest() || settled || !ipFailed || !geoFailed) return
       settled = true
       errorMessage.value = 'errorLocationNotFound'
       isLoading.value = false
@@ -201,10 +233,11 @@ export function useWeather() {
     ;(async () => {
       try {
         const place = await locationFromIp()
-        if (settled) return
+        if (!isCurrentRequest() || settled) return
         settled = true
-        await fetchWeather(place)
+        await loadWeather(place)
       } catch {
+        if (!isCurrentRequest()) return
         ipFailed = true
         failIfBothGaveUp()
       }
@@ -212,19 +245,20 @@ export function useWeather() {
 
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
-        if (settled) return
+        if (!isCurrentRequest() || settled) return
         settled = true
         const { latitude, longitude } = coords
         // show the forecast as soon as it's ready instead of waiting on reverse-geocoding first; resolve the place name in parallel
         const namePromise = locationFromCoordinates(latitude, longitude)
-        await fetchWeather({ name: CURRENT_LOCATION_FALLBACK_NAME, country: '', latitude, longitude, timezone: 'auto' })
+        await loadWeather({ name: CURRENT_LOCATION_FALLBACK_NAME, country: '', latitude, longitude, timezone: 'auto' })
         const place = await namePromise
-        if (selectedLocation.value.latitude === latitude && selectedLocation.value.longitude === longitude) {
+        if (isCurrentRequest() && selectedLocation.value.latitude === latitude && selectedLocation.value.longitude === longitude) {
           selectedLocation.value = { ...selectedLocation.value, name: place.name, country: place.country }
           if (import.meta.client) localStorage.setItem(savedLocationKey, JSON.stringify(selectedLocation.value))
         }
       },
       () => {
+        if (!isCurrentRequest()) return
         geoFailed = true
         failIfBothGaveUp()
       },
@@ -250,14 +284,27 @@ export function useWeather() {
   }
 
   watch(query, (value) => {
+    searchRequestId++
     if (searchTimer) clearTimeout(searchTimer)
     searchResults.value = []
+    searchError.value = ''
+    hasSearched.value = false
+    isSearching.value = false
     if (value.trim().length < 2) return
-    searchTimer = setTimeout(() => searchLocations(value), 250)
-  })
+    const requestId = searchRequestId
+    searchTimer = setTimeout(() => {
+      searchTimer = undefined
+      if (requestId === searchRequestId) void searchLocations(value)
+    }, 250)
+  }, { flush: 'sync' })
 
   onMounted(() => fetchWeather(readSavedLocation()))
-  onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer) })
+  onBeforeUnmount(() => {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchRequestId++
+    locationRequestId++
+    weatherRequestId++
+  })
 
-  return { weather, current, selectedLocation, query, searchResults, isLoading, isSearching, errorMessage, currentCondition, currentIcon, currentEffect, hourlyForecast, dailyForecast, fetchWeather, searchLocations, chooseLocation, useCurrentLocation }
+  return { weather, current, selectedLocation, query, searchResults, isLoading, isSearching, hasSearched, errorMessage, searchError, currentCondition, currentIcon, currentEffect, hourlyForecast, dailyForecast, fetchWeather, searchLocations, chooseLocation, useCurrentLocation }
 }
