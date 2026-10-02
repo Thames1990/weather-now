@@ -13,6 +13,8 @@ function response(currentTime: string, hourlyTimes: string[]): OpenMeteoWeatherR
     },
     hourly: {
       time: hourlyTimes.map(unix), temperature_2m: hourlyTimes.map((_, index) => 20 + index),
+      apparent_temperature: hourlyTimes.map((_, index) => 19 + index),
+      wind_speed_10m: hourlyTimes.map(() => 10),
       precipitation_probability: hourlyTimes.map(() => 0), precipitation: hourlyTimes.map(() => 0),
       weather_code: hourlyTimes.map(() => 0)
     },

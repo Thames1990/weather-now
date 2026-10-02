@@ -13,7 +13,8 @@ const upstream: OpenMeteoWeatherResponse = {
   },
   hourly: {
     time: [Date.parse('2026-09-09T11:00:00Z') / 1000],
-    temperature_2m: [20], precipitation_probability: [0], precipitation: [0], weather_code: [0]
+    temperature_2m: [20], apparent_temperature: [19], wind_speed_10m: [10],
+    precipitation_probability: [0], precipitation: [0], weather_code: [0]
   },
   daily: {
     time: [Date.parse('2026-09-08T22:00:00Z') / 1000],

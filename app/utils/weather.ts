@@ -84,9 +84,11 @@ export function selectHourlyForecast(weather: WeatherResponse, limit = 12): Hour
       time,
       isNow: times[sourceIndex]! <= currentTime && currentTime < intervalEnd(sourceIndex),
       temperature: Number(weather.hourly.temperature_2m[sourceIndex] ?? 0),
+      apparentTemperature: Number(weather.hourly.apparent_temperature[sourceIndex] ?? weather.current.apparent_temperature),
       precipitation: Number(weather.hourly.precipitation_probability[sourceIndex] ?? 0),
       precipitationAmount: Number(weather.hourly.precipitation[sourceIndex] ?? 0),
-      code: Number(weather.hourly.weather_code[sourceIndex] ?? 0)
+      code: Number(weather.hourly.weather_code[sourceIndex] ?? 0),
+      windSpeed: Number(weather.hourly.wind_speed_10m[sourceIndex] ?? weather.current.wind_speed_10m)
     }
   })
 }

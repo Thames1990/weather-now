@@ -23,9 +23,11 @@ export type WeatherResponse = {
   hourly: {
     time: string[]
     temperature_2m: number[]
+    apparent_temperature: number[]
     precipitation_probability: number[]
     precipitation: number[]
     weather_code: number[]
+    wind_speed_10m: number[]
   }
   daily: {
     time: string[]
@@ -44,9 +46,11 @@ export type HourlyForecast = {
   time: string
   isNow: boolean
   temperature: number
+  apparentTemperature: number
   precipitation: number
   precipitationAmount: number
   code: number
+  windSpeed: number
 }
 
 // Open-Meteo's timeformat=unixtime uses seconds since the UTC epoch.

@@ -21,7 +21,7 @@ const loadingLocation: LocationResult = {
 }
 const savedLocationKey = 'weather-now:last-location'
 const currentParams = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
-const hourlyParams = 'temperature_2m,precipitation_probability,precipitation,weather_code'
+const hourlyParams = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m'
 const dailyParams = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
 
 interface ExternalGeocodeResponse {

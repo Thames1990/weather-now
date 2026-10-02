@@ -14,9 +14,11 @@ function forecast(currentTime: string, times: string[]): WeatherResponse {
     hourly: {
       time: times,
       temperature_2m: times.map((_, index) => 10 + index),
+      apparent_temperature: times.map((_, index) => 9 + index),
       precipitation_probability: times.map((_, index) => index),
       precipitation: times.map((_, index) => index / 10),
-      weather_code: times.map(() => 0)
+      weather_code: times.map(() => 0),
+      wind_speed_10m: times.map((_, index) => 20 + index)
     },
     daily: {
       time: [], sunrise: [], sunset: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [],
@@ -33,7 +35,7 @@ describe('hourly selection and shared labels', () => {
   it('selects the containing hour for a quarter-hour current reading, keeping values aligned', () => {
     const selected = selectHourlyForecast(forecast('2026-09-09T11:15:00Z', times))
     expect(selected).toHaveLength(12)
-    expect(selected[0]).toMatchObject({ time: times[11], isNow: true, temperature: 21, precipitation: 11, precipitationAmount: 1.1 })
+    expect(selected[0]).toMatchObject({ time: times[11], isNow: true, temperature: 21, apparentTemperature: 20, windSpeed: 31, precipitation: 11, precipitationAmount: 1.1 })
     expect(selected.slice(1).every(hour => !hour.isNow)).toBe(true)
   })
 
