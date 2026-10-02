@@ -15,6 +15,8 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+const isReady = useAppReady()
+
 const items = computed(() => props.results.map((result) => ({
   label: result.name,
   description: [result.admin1, result.country].filter(Boolean).join(', '),
@@ -41,7 +43,7 @@ function onSelect(item: { location: LocationResult } | null) {
       :loading="isSearching"
       ignore-filter
       icon="i-lucide-search"
-      :placeholder="$t('searchPlaceholder')"
+      :placeholder="isReady ? $t('searchPlaceholder') : ''"
       :aria-label="$t('searchPlaceholder')"
       @update:search-term="emit('update:query', $event)"
       @update:model-value="onSelect"

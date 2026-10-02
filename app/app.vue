@@ -31,14 +31,11 @@ const languageOptions = [
 ]
 
 const colorMode = useColorMode()
-const isDark = computed(() => colorMode.value === 'dark')
-const pageThemeClass = computed(() => isDark.value ? 'bg-slate-950 text-slate-50' : 'bg-slate-100 text-slate-900')
-const panelThemeClass = computed(() => isDark.value
-  ? 'border border-slate-800/80 bg-slate-900/90 shadow-[0_10px_30px_rgba(2,6,23,0.38)]'
-  : 'border border-slate-200/80 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.06)]')
-const navbarThemeClass = computed(() => isDark.value
-  ? 'border-b border-slate-800/80 bg-slate-900/90'
-  : 'border-b border-slate-200/80 bg-white/80')
+const isReady = useAppReady()
+const isRefreshing = useDelayedFlag(() => isLoading.value && Boolean(current.value))
+// theme classes use `dark:` variants so the prerendered page already matches the color-mode class set before paint
+const panelThemeClass = 'border border-slate-200/80 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:shadow-[0_10px_30px_rgba(2,6,23,0.38)]'
+const navbarThemeClass = 'border-b border-slate-200/80 bg-white/80 dark:border-slate-800/80 dark:bg-slate-900/90'
 function toggleColorMode() {
   colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
 }
@@ -67,6 +64,8 @@ function isSupportedLocale(value: string | null): value is 'en' | 'de' {
 onMounted(() => {
   if (!isClothingGender(clothingGender.value)) clothingGender.value = 'neutral'
   if (!isSupportedLocale(savedLanguage.value)) savedLanguage.value = 'en'
+  // persisted state is restored by now; the savedLanguage watcher applies the locale before the next render
+  isReady.value = true
 })
 
 watch(locale, (value) => {
@@ -80,7 +79,7 @@ watch(savedLanguage, (value) => {
 
 <template>
   <UApp>
-    <div :class="['min-h-screen w-full max-w-none overflow-x-hidden', pageThemeClass]">
+    <div class="min-h-screen w-full max-w-none overflow-x-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       <UDashboardGroup class="w-full max-w-none">
         <UDashboardPanel :ui="{ root: `${panelThemeClass} w-full rounded-2xl backdrop-blur-sm`, body: 'js-dashboard-scroll grid min-h-0 w-full grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:grid-cols-12 lg:auto-rows-[minmax(196px,auto)] lg:gap-3 lg:p-3 lg:overflow-hidden' }">
           <template #header>
@@ -102,7 +101,7 @@ watch(savedLanguage, (value) => {
                     <UTooltip :text="$t('useCurrentLocation')">
                       <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
                     </UTooltip>
-                    <UTooltip v-if="current" :text="isFavorite(selectedLocation) ? $t('removeFavorite', { value: selectedLocation.name }) : $t('addFavorite', { value: selectedLocation.name })">
+                    <UTooltip v-if="isReady && current" :text="isFavorite(selectedLocation) ? $t('removeFavorite', { value: selectedLocation.name }) : $t('addFavorite', { value: selectedLocation.name })">
                       <UButton
                         :icon="isFavorite(selectedLocation) ? 'i-lucide-star' : 'i-lucide-star-off'"
                         :color="isFavorite(selectedLocation) ? 'warning' : 'neutral'"
@@ -111,15 +110,14 @@ watch(savedLanguage, (value) => {
                         @click="toggleFavorite(selectedLocation)"
                       />
                     </UTooltip>
+                    <USkeleton v-else class="size-8 rounded-md" />
                     <FavoritesMenu :favorites="favorites" @select="chooseLocation" @remove="removeFavorite" />
-                    <USelect v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-20 sm:w-24" :aria-label="$t('language')" />
-                    <UButton
-                      :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
-                      color="neutral"
-                      variant="ghost"
-                      :aria-label="$t('toggleTheme')"
-                      @click="toggleColorMode"
-                    />
+                    <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-20 sm:w-24" :aria-label="$t('language')" />
+                    <USkeleton v-else class="h-8 w-20 rounded-md sm:w-24" />
+                    <UButton color="neutral" variant="ghost" square :aria-label="$t('toggleTheme')" @click="toggleColorMode">
+                      <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
+                      <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
+                    </UButton>
                   </div>
                 </div>
               </template>
@@ -135,52 +133,63 @@ watch(savedLanguage, (value) => {
               :condition="currentCondition"
               :icon="currentIcon"
               :effect="currentEffect"
-              :is-loading="isLoading"
+              :is-refreshing="isRefreshing"
               :error-message="errorMessage"
               @retry="fetchWeather(selectedLocation)"
             />
             <ClothingRecommendation class="min-w-0 col-span-1 lg:col-span-5" :current="current" :hourly="hourlyForecast" :gender="clothingGender" @update:gender="updateClothingGender" />
             <WeatherDetails class="min-w-0 col-span-1 lg:col-span-3" :current="current" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
 
-            <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :labels="hourlyTimeLabels" :timezone="weather?.timezone" :is-loading="isLoading" />
+            <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :labels="hourlyTimeLabels" :timezone="weather?.timezone" :is-refreshing="isRefreshing" />
             <DailyForecast class="min-w-0 col-span-1 lg:col-span-7" :forecast="dailyForecast" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" />
 
             <UCard data-testid="temperature-trend-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
-                <h2 class="text-lg font-semibold text-highlighted">{{ $t('temperatureTrend') }}</h2>
+                <h2 class="text-lg font-semibold text-highlighted">
+                  <span v-if="isReady" class="wn-fade-in">{{ $t('temperatureTrend') }}</span>
+                  <USkeleton v-else as="span" class="my-1 block h-5 w-40" />
+                </h2>
               </template>
-              <LineChart v-if="hourlyForecast.length" :values="hourlyForecast.slice(0, 8).map((hour) => hour.temperature)" :labels="hourlyTimeLabels.slice(0, 8)" unit="°" color="var(--ui-primary)" />
-              <p v-else class="text-sm text-muted">{{ $t('readingNextHours') }}</p>
+              <LineChart v-if="isReady && hourlyForecast.length" class="wn-fade-in" :values="hourlyForecast.slice(0, 8).map((hour) => hour.temperature)" :labels="hourlyTimeLabels.slice(0, 8)" unit="°" color="var(--ui-primary)" />
+              <ChartSkeleton v-else variant="line" />
             </UCard>
 
             <UCard data-testid="precipitation-outlook-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
-                <h2 class="text-lg font-semibold text-highlighted">{{ $t('precipitationOutlook') }}</h2>
+                <h2 class="text-lg font-semibold text-highlighted">
+                  <span v-if="isReady" class="wn-fade-in">{{ $t('precipitationOutlook') }}</span>
+                  <USkeleton v-else as="span" class="my-1 block h-5 w-40" />
+                </h2>
               </template>
               <BarChart
-                v-if="hourlyForecast.length"
+                v-if="isReady && hourlyForecast.length"
+                class="wn-fade-in"
                 :values="hourlyForecast.slice(0, 6).map((hour) => hour.precipitationAmount)"
                 :labels="hourlyTimeLabels.slice(0, 6)"
                 unit="mm"
                 color="bg-primary"
                 :format-value="(value) => value.toFixed(1)"
               />
-              <p v-else class="text-sm text-muted">{{ $t('readingNextHours') }}</p>
+              <ChartSkeleton v-else :bars="6" />
             </UCard>
 
             <UCard data-testid="sun-hours-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
-                <h2 class="text-lg font-semibold text-highlighted">{{ $t('sunHoursThisWeek') }}</h2>
+                <h2 class="text-lg font-semibold text-highlighted">
+                  <span v-if="isReady" class="wn-fade-in">{{ $t('sunHoursThisWeek') }}</span>
+                  <USkeleton v-else as="span" class="my-1 block h-5 w-40" />
+                </h2>
               </template>
               <BarChart
-                v-if="dailyForecast.length"
+                v-if="isReady && dailyForecast.length"
+                class="wn-fade-in"
                 :values="dailyForecast.map((day) => day.sunshineHours)"
                 :labels="dailyForecast.map((day, index) => (index === 0 ? $t('today') : formatDay(day.time, index, locale)))"
                 unit="h"
                 color="bg-primary"
                 :format-value="(value) => `${value.toFixed(1)}h`"
               />
-              <p v-else class="text-sm text-muted">{{ $t('buildingWeek') }}</p>
+              <ChartSkeleton v-else :bars="7" />
             </UCard>
           </template>
         </UDashboardPanel>
