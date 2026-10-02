@@ -3,11 +3,14 @@ import type { LocationResult } from '~/types/weather'
 
 defineProps<{
   favorites: LocationResult[]
+  isLocalizing: boolean
+  errorMessage: string
 }>()
 
 const emit = defineEmits<{
   select: [location: LocationResult]
   remove: [location: LocationResult]
+  retry: []
 }>()
 </script>
 
@@ -22,6 +25,11 @@ const emit = defineEmits<{
     <template #content>
       <div class="w-[min(18rem,calc(100vw-2rem))] p-2">
         <p class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted">{{ $t('favoriteCities') }}</p>
+        <p v-if="isLocalizing" role="status" class="px-1 pb-2 text-sm text-muted">{{ $t('loadingFavoriteNames') }}</p>
+        <div v-if="errorMessage" class="px-1 pb-2">
+          <p role="alert" class="text-sm text-error">{{ $t(errorMessage) }}</p>
+          <UButton variant="link" size="sm" :disabled="isLocalizing" @click="emit('retry')">{{ $t('tryAgain') }}</UButton>
+        </div>
         <p v-if="!favorites.length" class="px-1 pb-1 text-sm text-muted">{{ $t('noFavoritesYet') }}</p>
         <ul v-else class="flex flex-col gap-0.5">
           <li v-for="favorite in favorites" :key="`${favorite.latitude}-${favorite.longitude}`" class="group flex items-center gap-1 rounded-md hover:bg-elevated">
@@ -42,7 +50,7 @@ const emit = defineEmits<{
               variant="ghost"
               color="neutral"
               size="sm"
-              class="shrink-0 opacity-0 group-hover:opacity-100"
+              class="shrink-0"
               :aria-label="$t('removeFavorite', { value: favorite.name })"
               @click="emit('remove', favorite)"
             />

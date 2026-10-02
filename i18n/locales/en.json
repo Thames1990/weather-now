@@ -8,6 +8,8 @@
   "noFavoritesYet": "No favorite cities yet. Use the star icon to save one.",
   "addFavorite": "Add {value} to favorites",
   "removeFavorite": "Remove {value} from favorites",
+  "loadingFavoriteNames": "Loading city names in all languages…",
+  "errorFavoriteLocalization": "Some city names could not be translated. Your favorites are saved. Check your connection and try again.",
   "nowIn": "Current conditions",
   "yourCoordinates": "Current position",
   "forecastUnavailable": "Forecast unavailable",

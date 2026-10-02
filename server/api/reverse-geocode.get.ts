@@ -1,7 +1,7 @@
 import { isValidCoordinates, parseReverseGeocodeResult } from '~/utils/provider-validation'
 
 export default defineCachedEventHandler(async (event) => {
-  const { latitude, longitude } = getQuery(event)
+  const { latitude, longitude, language } = getQuery(event)
   const parsedLatitude = Number(latitude)
   const parsedLongitude = Number(longitude)
   if (!isValidCoordinates(parsedLatitude, parsedLongitude)) {
@@ -12,7 +12,7 @@ export default defineCachedEventHandler(async (event) => {
   try {
     payload = await $fetch<unknown>(
       'https://api.bigdatacloud.net/data/reverse-geocode-client',
-      { query: { latitude: parsedLatitude, longitude: parsedLongitude, localityLanguage: 'en' } }
+      { query: { latitude: parsedLatitude, longitude: parsedLongitude, localityLanguage: language || 'en' } }
     )
   } catch {
     throw createError({ statusCode: 502, statusMessage: 'Upstream reverse-geocoding provider unavailable' })
@@ -26,8 +26,8 @@ export default defineCachedEventHandler(async (event) => {
 }, {
   maxAge: 60 * 60,
   getKey: (event) => {
-    const { latitude, longitude } = getQuery(event)
+    const { latitude, longitude, language } = getQuery(event)
     // round to ~1km so nearby requests share a cache entry
-    return `${Number(latitude).toFixed(2)}:${Number(longitude).toFixed(2)}`
+    return `${Number(latitude).toFixed(2)}:${Number(longitude).toFixed(2)}:${language || 'en'}`
   }
 })

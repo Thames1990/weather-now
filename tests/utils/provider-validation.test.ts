@@ -55,6 +55,14 @@ describe('external provider response validation', () => {
     expect(() => parseReverseGeocodeResult({ city: 42 })).toThrow(/Invalid reverse-geocoding/)
   })
 
+  it('preserves city IDs and rejects malformed IDs', () => {
+    const place = { id: 2886242, name: 'Cologne', latitude: 50.93, longitude: 6.95, timezone: 'Europe/Berlin' }
+    expect(parseGeocodingResults({ results: [place] })[0]?.id).toBe(2886242)
+    for (const id of ['2886242', 0, -1, 1.5]) {
+      expect(() => parseGeocodingResults({ results: [{ ...place, id }] })).toThrow(/Invalid Open-Meteo/)
+    }
+  })
+
   it('parses IP coordinates and rejects missing or out-of-range values', () => {
     expect(parseIpLocationResult({ city: 'Berlin', country: 'DE', loc: '52.52,13.41' }))
       .toEqual({ name: 'Berlin', country: 'DE', latitude: 52.52, longitude: 13.41 })

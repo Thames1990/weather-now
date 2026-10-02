@@ -1,10 +1,17 @@
 export type LocationResult = {
+  id?: number
   name: string
   country: string
   latitude: number
   longitude: number
   timezone: string
   admin1?: string
+}
+
+export type LocationLabels = Pick<LocationResult, 'name' | 'country' | 'admin1'>
+
+export type FavoriteLocation = LocationResult & {
+  labels?: Record<string, LocationLabels>
 }
 
 export type WeatherResponse = {
