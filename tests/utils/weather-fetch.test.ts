@@ -43,10 +43,10 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function installWeatherGlobals(fetch: ReturnType<typeof vi.fn>) {
+function installWeatherGlobals(fetch: ReturnType<typeof vi.fn>, apiMode = 'server') {
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('useI18n', () => ({ locale: ref('de') }))
-  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode: 'server' } }))
+  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode } }))
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('watch', watch)
@@ -54,8 +54,8 @@ function installWeatherGlobals(fetch: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('onBeforeUnmount', vi.fn())
 }
 
-async function createWeatherState(fetch: ReturnType<typeof vi.fn>) {
-  installWeatherGlobals(fetch)
+async function createWeatherState(fetch: ReturnType<typeof vi.fn>, apiMode = 'server') {
+  installWeatherGlobals(fetch, apiMode)
   const { useWeather } = await import('~/composables/useWeather')
   return useWeather()
 }
@@ -108,6 +108,23 @@ describe('weather fetch timestamp contract', () => {
     } else {
       expect(fetch).toHaveBeenCalledWith('/api/weather', { query: { latitude: 52.52, longitude: 13.41 } })
     }
+  })
+
+  it('turns malformed static-provider forecast and search payloads into errors', async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ results: [{}] })
+    const state = await createWeatherState(fetch, 'external')
+
+    await state.fetchWeather(location)
+    expect(state.weather.value).toBeNull()
+    expect(state.errorMessage.value).toBe('errorForecastUnavailable')
+
+    state.query.value = 'Berlin'
+    await state.searchLocations()
+    expect(state.searchResults.value).toEqual([])
+    expect(state.searchError.value).toBe('errorSearchUnavailable')
   })
 })
 
