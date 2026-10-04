@@ -142,9 +142,23 @@ export function useWeather() {
     }
   }
 
-  function chooseLocation(location: LocationResult) {
+  function resetSearchState() {
+    searchRequestId++
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = undefined
     searchResults.value = []
-    query.value = ''
+    searchError.value = ''
+    hasSearched.value = false
+    isSearching.value = false
+  }
+
+  function clearSearch() {
+    if (query.value) query.value = ''
+    else resetSearchState()
+  }
+
+  function chooseLocation(location: LocationResult) {
+    clearSearch()
     fetchWeather(location)
   }
 
@@ -179,8 +193,7 @@ export function useWeather() {
   }
 
   function useCurrentLocation() {
-    searchResults.value = []
-    query.value = ''
+    clearSearch()
     if (!navigator.geolocation) {
       locationRequestId++
       weatherRequestId++
@@ -261,12 +274,7 @@ export function useWeather() {
   }
 
   watch(query, (value) => {
-    searchRequestId++
-    if (searchTimer) clearTimeout(searchTimer)
-    searchResults.value = []
-    searchError.value = ''
-    hasSearched.value = false
-    isSearching.value = false
+    resetSearchState()
     if (value.trim().length < 2) return
     const requestId = searchRequestId
     searchTimer = setTimeout(() => {
@@ -283,5 +291,5 @@ export function useWeather() {
     weatherRequestId++
   })
 
-  return { weather, current, selectedLocation, query, searchResults, isLoading, isSearching, hasSearched, errorMessage, searchError, currentCondition, currentIcon, currentEffect, hourlyForecast, dailyForecast, fetchWeather, searchLocations, chooseLocation, useCurrentLocation }
+  return { weather, current, selectedLocation, query, searchResults, isLoading, isSearching, hasSearched, errorMessage, searchError, currentCondition, currentIcon, currentEffect, hourlyForecast, dailyForecast, fetchWeather, searchLocations, clearSearch, chooseLocation, useCurrentLocation }
 }

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import type { Route } from '@playwright/test'
 import type { LocationResult, OpenMeteoWeatherResponse } from '../../app/types/weather'
 import { normalizeWeather } from '../../app/utils/weather'
 
@@ -28,6 +29,54 @@ const forecast: OpenMeteoWeatherResponse = {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/weather?**', route => route.fulfill({ json: normalizeWeather(forecast) }))
   await page.route('https://api.open-meteo.com/v1/forecast?**', route => route.fulfill({ json: forecast }))
+})
+
+test('clears search results and errors without changing the displayed location', async ({ page }) => {
+  const geocode = async (route: Route) => {
+    const name = new URL(route.request().url()).searchParams.get('name')
+    if (name === 'RequestError') {
+      await route.abort()
+      return
+    }
+    await route.fulfill({ json: { results: [] } })
+  }
+  await page.route('**/api/geocode?**', geocode)
+  await page.route('https://geocoding-api.open-meteo.com/v1/search?**', geocode)
+  await page.goto('/')
+
+  const search = page.getByRole('combobox', { name: 'Search a city' })
+  const clear = page.getByRole('button', { name: 'Clear search', exact: true })
+  const weatherLocation = page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })
+  await expect(weatherLocation).toHaveText('London')
+  await expect(clear).toHaveCount(0)
+
+  await search.fill('NoSuchPlace')
+  await expect(page.getByText('No matching locations found.', { exact: true })).toBeVisible()
+  await expect(clear).toBeVisible()
+  await clear.click()
+  await expect(search).toHaveValue('')
+  await expect(search).toBeFocused()
+  await expect(clear).toHaveCount(0)
+  await expect(page.getByText('No matching locations found.', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('listbox')).toBeHidden()
+  await expect(weatherLocation).toHaveText('London')
+
+  await search.fill('RequestError')
+  await expect(page.getByRole('alert')).toContainText('Location search is temporarily unavailable.')
+  if (test.info().project.name === 'desktop-chrome') {
+    await search.focus()
+    await expect(search).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(clear).toBeFocused()
+    await page.keyboard.press('Enter')
+  } else {
+    await clear.click()
+  }
+  await expect(search).toHaveValue('')
+  await expect(search).toBeFocused()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('listbox')).toBeHidden()
+  await expect(weatherLocation).toHaveText('London')
 })
 
 for (const action of ['current location', 'favorite']) {
