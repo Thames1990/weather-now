@@ -129,6 +129,35 @@ describe('weather fetch timestamp contract', () => {
 })
 
 describe('weather and location request sequencing', () => {
+  it.each([true, false])('clears search state on a current-location request (geolocation supported: %s)', async (supported) => {
+    vi.useFakeTimers()
+    const pendingSearch = deferred<{ results: LocationResult[] }>()
+    const fetch = vi.fn((url: string) => url === '/api/geocode'
+      ? pendingSearch.promise
+      : Promise.resolve({ name: 'Oslo', country: 'Norway', latitude: 59.91, longitude: 10.75 }))
+    const state = await createWeatherState(fetch)
+    vi.stubGlobal('navigator', supported ? { geolocation: { getCurrentPosition: vi.fn() } } : {})
+    state.query.value = 'Berlin'
+    const request = state.searchLocations()
+    state.searchResults.value = [location]
+    state.hasSearched.value = true
+    state.searchError.value = 'errorSearchUnavailable'
+
+    state.useCurrentLocation()
+    expect(state.query.value).toBe('')
+    expect(state.searchResults.value).toEqual([])
+    expect(state.hasSearched.value).toBe(false)
+    expect(state.searchError.value).toBe('')
+    expect(state.isSearching.value).toBe(false)
+
+    pendingSearch.resolve({ results: [location] })
+    await request
+    await vi.advanceTimersByTimeAsync(300)
+    expect(state.searchResults.value).toEqual([])
+    expect(state.hasSearched.value).toBe(false)
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/geocode')).toHaveLength(1)
+  })
+
   it('keeps the latest forecast and loading state when requests resolve out of order', async () => {
     const olderForecast = deferred<WeatherResponse>()
     const newerForecast = deferred<WeatherResponse>()
