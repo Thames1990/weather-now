@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ClothingGender } from '~/utils/clothing'
+import { LOCATING_LOCATION_NAME, LOADING_LOCATION_NAME } from '~/composables/useWeather'
 import { formatDay, hourlyLabels } from '~/utils/weather'
 
 const {
@@ -46,7 +47,7 @@ onMounted(() => {
 })
 
 const {
-  favorites, isFavorite, toggleFavorite, removeFavorite, displayLocation,
+  favorites, isFavorite, addFavorite, saveFavorites, displayLocation,
   isLocalizing, errorMessage: favoriteError, retryLocalization
 } = useFavorites()
 const displayedLocation = computed(() => displayLocation(selectedLocation.value))
@@ -105,19 +106,20 @@ watch(savedLanguage, (value) => {
                   />
                   <div class="order-2 flex flex-wrap items-center gap-1.5 sm:order-none sm:flex-nowrap sm:gap-2">
                     <UTooltip :text="$t('useCurrentLocation')">
-                      <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
+                      <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" class="min-h-11 min-w-11" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
                     </UTooltip>
-                    <UTooltip v-if="isReady && current" :text="isFavorite(selectedLocation) ? $t('removeFavorite', { value: displayedLocation.name }) : $t('addFavorite', { value: displayedLocation.name })">
-                      <UButton
-                        :icon="isFavorite(selectedLocation) ? 'i-lucide-star' : 'i-lucide-star-off'"
-                        :color="isFavorite(selectedLocation) ? 'warning' : 'neutral'"
-                        variant="ghost"
-                        :aria-label="isFavorite(selectedLocation) ? $t('removeFavorite', { value: displayedLocation.name }) : $t('addFavorite', { value: displayedLocation.name })"
-                        @click="toggleFavorite(selectedLocation)"
-                      />
-                    </UTooltip>
-                    <USkeleton v-else class="size-8 rounded-md" />
-                    <FavoritesMenu :favorites="favorites" :is-localizing="isLocalizing" :error-message="favoriteError" @select="chooseLocation" @remove="removeFavorite" @retry="retryLocalization" />
+                    <FavoritesMenu
+                      :favorites="favorites"
+                      :current-location="displayedLocation"
+                      :has-current-location="isReady && Boolean(current) && selectedLocation.name !== LOCATING_LOCATION_NAME && selectedLocation.name !== LOADING_LOCATION_NAME"
+                      :is-current-favorite="isFavorite(selectedLocation)"
+                      :is-localizing="isLocalizing"
+                      :error-message="favoriteError"
+                      @select="chooseLocation"
+                      @add="addFavorite"
+                      @save="saveFavorites"
+                      @retry="retryLocalization"
+                    />
                     <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-20 sm:w-24" :aria-label="$t('language')" />
                     <USkeleton v-else class="h-8 w-20 rounded-md sm:w-24" />
                     <UButton color="neutral" variant="ghost" square :aria-label="$t('toggleTheme')" @click="toggleColorMode">

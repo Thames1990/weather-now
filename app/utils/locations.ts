@@ -2,7 +2,50 @@ import type { FavoriteLocation, LocationLabels, LocationResult } from '~/types/w
 
 export function sameLocation(a: LocationResult, b: LocationResult): boolean {
   if (a.id !== undefined && b.id !== undefined) return a.id === b.id
-  return Math.abs(a.latitude - b.latitude) < 0.01 && Math.abs(a.longitude - b.longitude) < 0.01
+  // Coordinates are only a safe fallback when they identify the same provider point.
+  // A tolerance can silently merge neighboring towns (or unrelated same-name places).
+  return a.latitude === b.latitude && a.longitude === b.longitude
+}
+
+export function locationKey(location: LocationResult): string {
+  return location.id !== undefined
+    ? `id:${location.id}`
+    : `coordinates:${location.latitude}:${location.longitude}`
+}
+
+export function moveItem<T>(items: T[], from: number, to: number): T[] {
+  if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return items
+  const reordered = [...items]
+  const [item] = reordered.splice(from, 1)
+  if (item === undefined) return items
+  reordered.splice(to, 0, item)
+  return reordered
+}
+
+function normalizedPlaceName(value: string): string {
+  return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLocaleLowerCase('en')
+}
+
+function normalizedCountry(value: string): string {
+  const countryName = value.length === 2
+    ? new Intl.DisplayNames(['en'], { type: 'region' }).of(value.toUpperCase())
+    : undefined
+  return normalizedPlaceName(countryName || value)
+}
+
+export function resolveCityIdentity(
+  location: LocationResult,
+  candidates: LocationResult[],
+  admin1?: string
+): LocationResult {
+  if (!location.name || !location.country) return location
+  const matches = candidates.filter(candidate =>
+    normalizedPlaceName(candidate.name) === normalizedPlaceName(location.name)
+    && normalizedCountry(candidate.country) === normalizedCountry(location.country)
+    && (!admin1 || (candidate.admin1 !== undefined && normalizedPlaceName(candidate.admin1) === normalizedPlaceName(admin1)))
+  )
+  const match = matches.length === 1 ? matches[0] : undefined
+  return match?.id === undefined ? location : { ...location, id: match.id, admin1: match.admin1 ?? admin1 }
 }
 
 export function localizeFavorite(location: FavoriteLocation, language: string): FavoriteLocation {
