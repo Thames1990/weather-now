@@ -126,13 +126,64 @@ describe('weather fetch timestamp contract', () => {
     expect(state.searchResults.value).toEqual([])
     expect(state.searchError.value).toBe('errorSearchUnavailable')
   })
+
+  it.each(['server', 'external'])('enriches current-location identity with Open-Meteo in %s mode', async (mode) => {
+    type GeoPosition = { coords: { latitude: number; longitude: number } }
+    type GeoSuccess = (position: GeoPosition) => void
+    const coordinates = { latitude: 50.94, longitude: 6.96 }
+    const cologne: LocationResult = {
+      id: 2886242,
+      name: 'Cologne',
+      country: 'Germany',
+      admin1: 'North Rhine-Westphalia',
+      latitude: 50.93333,
+      longitude: 6.95,
+      timezone: 'Europe/Berlin'
+    }
+    let onGeoSuccess: GeoSuccess | undefined
+    const fetch = vi.fn(async (url: string) => {
+      if (url === '/api/ip-location') throw new Error('IP location unavailable')
+      if (url === '/api/reverse-geocode' || url.includes('reverse-geocode-client')) {
+        return { name: 'Cologne', country: 'Germany', admin1: 'North Rhine-Westphalia' }
+      }
+      if (url === '/api/geocode' || url.includes('geocoding-api.open-meteo.com/v1/search')) {
+        return { results: [cologne] }
+      }
+      if (url === '/api/weather') return normalizeWeather(upstream)
+      if (url.includes('api.open-meteo.com/v1/forecast')) return upstream
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const state = await createWeatherState(fetch, mode)
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        getCurrentPosition(success: GeoSuccess) {
+          onGeoSuccess = success
+        }
+      }
+    })
+
+    state.useCurrentLocation()
+    await onGeoSuccess?.({ coords: coordinates })
+
+    expect(state.selectedLocation.value).toMatchObject({
+      id: cologne.id,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude
+    })
+    expect(fetch).toHaveBeenCalledWith(
+      mode === 'external' ? 'https://geocoding-api.open-meteo.com/v1/search' : '/api/geocode',
+      expect.objectContaining({
+        query: expect.objectContaining({ name: 'Cologne', count: 100, language: 'en' })
+      })
+    )
+  })
 })
 
 describe('weather and location request sequencing', () => {
   it.each([true, false])('clears search state on a current-location request (geolocation supported: %s)', async (supported) => {
     vi.useFakeTimers()
     const pendingSearch = deferred<{ results: LocationResult[] }>()
-    const fetch = vi.fn((url: string) => url === '/api/geocode'
+    const fetch = vi.fn((url: string, _options?: { query?: { name?: string } }) => url === '/api/geocode'
       ? pendingSearch.promise
       : Promise.resolve({ name: 'Oslo', country: 'Norway', latitude: 59.91, longitude: 10.75 }))
     const state = await createWeatherState(fetch)
@@ -155,7 +206,9 @@ describe('weather and location request sequencing', () => {
     await vi.advanceTimersByTimeAsync(300)
     expect(state.searchResults.value).toEqual([])
     expect(state.hasSearched.value).toBe(false)
-    expect(fetch.mock.calls.filter(([url]) => url === '/api/geocode')).toHaveLength(1)
+    const geocodeCalls = fetch.mock.calls.filter(([url]) => url === '/api/geocode')
+    expect(geocodeCalls).toHaveLength(supported ? 2 : 1)
+    expect(geocodeCalls.map(([, options]) => options?.query?.name)).toEqual(supported ? ['Berlin', 'Oslo'] : ['Berlin'])
   })
 
   it('keeps the latest forecast and loading state when requests resolve out of order', async () => {
@@ -235,7 +288,7 @@ describe('weather and location request sequencing', () => {
     expect(state.selectedLocation.value).toEqual(selected)
     expect(state.isLoading.value).toBe(false)
     expect(state.errorMessage.value).toBe('')
-    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(fetch).toHaveBeenCalledTimes(4)
   })
 
   it('discards stale search results and only clears loading for the active search', async () => {

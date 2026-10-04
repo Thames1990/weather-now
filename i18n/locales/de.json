@@ -10,7 +10,7 @@
   "addFavorite": "{value} zu Favoriten hinzufügen",
   "removeFavorite": "{value} aus Favoriten entfernen",
   "loadingFavoriteNames": "Stadtnamen in allen Sprachen werden geladen…",
-  "errorFavoriteLocalization": "Einige Stadtnamen konnten nicht übersetzt werden. Deine Favoriten sind gespeichert. Prüfe deine Verbindung und versuche es erneut.",
+  "errorFavoriteLocalization": "Einige Ortsnamen konnten gerade nicht geladen werden. Deine Favoriten sind sicher gespeichert – versuche es gleich noch einmal.",
   "nowIn": "Aktuelle Bedingungen",
   "yourCoordinates": "Aktuelle Position",
   "forecastUnavailable": "Vorhersage nicht verfügbar",

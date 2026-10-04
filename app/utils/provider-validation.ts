@@ -159,6 +159,7 @@ export function parseGeocodingResults(value: unknown): LocationResult[] {
 export type ReverseGeocodeResult = {
   name: string
   country: string
+  admin1?: string
 }
 
 export function parseReverseGeocodeResult(value: unknown): ReverseGeocodeResult {
@@ -169,10 +170,13 @@ export function parseReverseGeocodeResult(value: unknown): ReverseGeocodeResult 
     throw new Error('Invalid reverse-geocoding response')
   }
   const firstString = (...values: unknown[]) => values.find((entry): entry is string => typeof entry === 'string' && entry.length > 0) || ''
-  return {
+  const result: ReverseGeocodeResult = {
     name: firstString(value.name, value.city, value.locality, value.principalSubdivision),
     country: firstString(value.country, value.countryName)
   }
+  const admin1 = firstString(value.admin1, value.principalSubdivision)
+  if (admin1) result.admin1 = admin1
+  return result
 }
 
 export type IpLocationResult = {

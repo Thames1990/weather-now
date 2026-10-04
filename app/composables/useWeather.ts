@@ -1,4 +1,5 @@
 import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } from '~/types/weather'
+import { resolveCityIdentity } from '~/utils/locations'
 import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '~/utils/provider-validation'
 import { normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
 
@@ -142,6 +143,23 @@ export function useWeather() {
     }
   }
 
+  async function identifyCity(location: LocationResult, admin1?: string): Promise<LocationResult> {
+    if (!location.name || !location.country) return location
+    try {
+      const query = { name: location.name, count: 100, language: 'en' }
+      const payload = config.public.apiMode === 'external'
+        ? await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
+            query: { ...query, format: 'json' }
+          })
+        : await $fetch<unknown>('/api/geocode', { query })
+      const matches = parseGeocodingResults(payload)
+      return resolveCityIdentity(location, matches, admin1)
+    } catch {
+      // Identity enrichment is optional; weather for the precise coordinates remains usable.
+    }
+    return location
+  }
+
   function resetSearchState() {
     searchRequestId++
     if (searchTimer) clearTimeout(searchTimer)
@@ -172,7 +190,15 @@ export function useWeather() {
             query: { latitude, longitude }
           })
       const place = parseReverseGeocodeResult(payload)
-      return { name: place.name || CURRENT_LOCATION_FALLBACK_NAME, country: place.country, latitude, longitude, timezone: 'auto' }
+      const location: LocationResult = {
+        name: place.name || CURRENT_LOCATION_FALLBACK_NAME,
+        country: place.country,
+        latitude,
+        longitude,
+        timezone: 'auto',
+        admin1: place.admin1
+      }
+      return identifyCity(location, place.admin1)
     } catch {
       return { name: CURRENT_LOCATION_FALLBACK_NAME, country: '', latitude, longitude, timezone: 'auto' }
     }
@@ -183,13 +209,14 @@ export function useWeather() {
       ? await $fetch<unknown>('https://ipinfo.io/json')
       : await $fetch<unknown>('/api/ip-location')
     const place = parseIpLocationResult(payload)
-    return {
+    const location: LocationResult = {
       name: place.name || CURRENT_LOCATION_FALLBACK_NAME,
       country: place.country,
       latitude: place.latitude,
       longitude: place.longitude,
       timezone: 'auto'
     }
+    return identifyCity(location)
   }
 
   function useCurrentLocation() {
@@ -243,7 +270,13 @@ export function useWeather() {
         await loadWeather({ name: CURRENT_LOCATION_FALLBACK_NAME, country: '', latitude, longitude, timezone: 'auto' })
         const place = await namePromise
         if (isCurrentRequest() && selectedLocation.value.latitude === latitude && selectedLocation.value.longitude === longitude) {
-          selectedLocation.value = { ...selectedLocation.value, name: place.name, country: place.country }
+          selectedLocation.value = {
+            ...selectedLocation.value,
+            name: place.name,
+            country: place.country,
+            id: place.id,
+            admin1: place.admin1
+          }
           if (import.meta.client) localStorage.setItem(savedLocationKey, JSON.stringify(selectedLocation.value))
         }
       },

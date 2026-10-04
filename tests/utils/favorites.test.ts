@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import type { FavoriteLocation, LocationResult } from '~/types/weather'
-import { favoriteLabels, localizeFavorite, sameLocation } from '~/utils/locations'
+import { favoriteLabels, localizeFavorite, resolveCityIdentity, sameLocation } from '~/utils/locations'
 
 const cologne: LocationResult = {
   id: 2886242, name: 'Cologne', country: 'Germany', admin1: 'North Rhine-Westphalia',
@@ -71,6 +71,29 @@ describe('multilingual favorites', () => {
     expect(storage.value[0]?.labels?.en?.name).toBe('Cologne')
     locale.value = 'en'
     expect(state.favorites.value[0]?.name).toBe('Cologne')
+  })
+
+  it('localizes a current-location favorite whose precise coordinates differ from the city geocoding point', async () => {
+    const currentLocation: LocationResult = {
+      ...cologne,
+      latitude: 50.94,
+      longitude: 6.96
+    }
+    const { state, storage } = await setup('server', [], localizedFetch('server'))
+
+    state.toggleFavorite(currentLocation)
+    await vi.waitFor(() => expect(state.isLocalizing.value).toBe(false))
+
+    expect(state.errorMessage.value).toBe('')
+    expect(storage.value[0]).toMatchObject({
+      id: cologne.id,
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      labels: {
+        en: { name: 'Cologne' },
+        de: { name: 'Köln' }
+      }
+    })
   })
 
   it('migrates legacy favorites by coordinates, not the first search result', async () => {
@@ -147,7 +170,16 @@ describe('multilingual favorites', () => {
     expect(sameLocation(cologne, koeln)).toBe(true)
     expect(sameLocation(cologne, { ...cologne, id: 3178287 })).toBe(false)
     expect(sameLocation(cologne, { ...cologne, id: undefined })).toBe(true)
+    expect(sameLocation(cologne, { ...cologne, id: undefined, latitude: cologne.latitude + 0.005 })).toBe(false)
     expect(localizeFavorite({ ...cologne, labels: { de: { name: 'Köln', country: 'Deutschland' } } }, 'de').admin1).toBeUndefined()
     expect(favoriteLabels({ ...cologne, labels: { de: { name: '', country: 'Deutschland' } } }, 'de')).toBeUndefined()
+  })
+
+  it('only resolves current-city identity from unique name, country, and administrative context', () => {
+    const current = { ...cologne, id: undefined, latitude: 50.94, longitude: 6.96 }
+    expect(resolveCityIdentity(current, [cologne], cologne.admin1)).toMatchObject({ id: cologne.id })
+    expect(resolveCityIdentity(current, [cologne, { ...cologne, id: 3178287 }], cologne.admin1)).toEqual(current)
+    expect(resolveCityIdentity(current, [{ ...cologne, admin1: 'Bavaria' }], cologne.admin1)).toEqual(current)
+    expect(resolveCityIdentity({ ...current, country: 'DE' }, [cologne], cologne.admin1)).toMatchObject({ id: cologne.id })
   })
 })

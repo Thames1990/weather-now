@@ -40,9 +40,7 @@ export function useFavorites() {
       if (existing) return [language, existing]
       if (id !== undefined) {
         const match = (await geocode({ id, language })).find(candidate => candidate.id === id)
-        if (!match || !sameLocation({ ...location, id: undefined }, match)) {
-          throw new Error('Favorite city could not be identified')
-        }
+        if (!match) throw new Error('Favorite city could not be identified')
         return [language, { name: match.name, country: match.country, admin1: match.admin1 }]
       }
       const query = { latitude: location.latitude, longitude: location.longitude }
