@@ -38,6 +38,7 @@ function onSelect(item: { location: LocationResult } | null) {
   <div class="min-w-0">
     <UInputMenu
       v-model:open="menuOpen"
+      :model-value="null"
       :search-term="query"
       :items="items"
       :loading="isSearching"

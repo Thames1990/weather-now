@@ -179,6 +179,8 @@ export function useWeather() {
   }
 
   function useCurrentLocation() {
+    searchResults.value = []
+    query.value = ''
     if (!navigator.geolocation) {
       locationRequestId++
       weatherRequestId++

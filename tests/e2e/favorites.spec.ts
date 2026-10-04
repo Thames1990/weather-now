@@ -30,6 +30,55 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://api.open-meteo.com/v1/forecast?**', route => route.fulfill({ json: forecast }))
 })
 
+for (const action of ['current location', 'favorite']) {
+  test(`clears the city search when choosing a ${action}`, async ({ page }) => {
+    const oslo: LocationResult = {
+      name: 'Oslo', country: 'Norway', latitude: 59.91, longitude: 10.75, timezone: 'Europe/Oslo'
+    }
+    await page.addInitScript((location) => {
+      localStorage.setItem('weather-now:favorites', JSON.stringify([{
+        ...location,
+        labels: { en: { name: location.name, country: location.country }, de: { name: location.name, country: location.country } }
+      }]))
+      Object.defineProperty(navigator, 'geolocation', {
+        value: { getCurrentPosition: () => {} }
+      })
+    }, oslo)
+    await page.route('**/api/ip-location', route => route.fulfill({ json: oslo }))
+    await page.route('https://ipinfo.io/json', route => route.fulfill({
+      json: { city: oslo.name, country: 'NO', loc: `${oslo.latitude},${oslo.longitude}` }
+    }))
+    await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))
+    await page.route('https://geocoding-api.open-meteo.com/v1/search?**', route => route.fulfill({ json: { results: [cologne] } }))
+    await page.goto('/')
+    await expect(page.getByLabel('Language', { exact: true })).toBeVisible({ timeout: 15000 })
+    const search = page.getByRole('combobox', { name: 'Search a city' })
+    const heading = page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })
+    await search.fill('Cologne')
+    await page.getByRole('option', { name: /Cologne/ }).click()
+    await expect(heading).toHaveText('Cologne')
+
+    if (action === 'current location') {
+      await page.getByRole('button', { name: 'Use my current location', exact: true }).click()
+    } else {
+      await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+      await page.getByRole('button', { name: 'Oslo Norway', exact: true }).click()
+    }
+    await expect(heading).toHaveText('Oslo')
+    await expect(search).toHaveValue('')
+    await expect(search).toHaveAttribute('placeholder', 'Search a city')
+    await search.focus()
+    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByRole('status')).toHaveCount(0)
+    await search.fill('Cologne')
+    await expect(page.getByRole('option', { name: /Cologne/ })).toBeVisible()
+    await search.press('ArrowDown')
+    await search.press('Enter')
+    await expect(heading).toHaveText('Cologne')
+    await expect(search).toHaveValue('')
+  })
+}
+
 for (const search of ['Köln', 'Cologne']) {
   test(`saving ${search} in English stores both languages and survives an offline reload`, async ({ page }) => {
     const runtimeErrors: string[] = []
