@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import type { FavoriteLocation, LocationResult } from '~/types/weather'
-import { favoriteLabels, localizeFavorite, resolveCityIdentity, sameLocation } from '~/utils/locations'
+import { favoriteLabels, localizeFavorite, moveItem, resolveCityIdentity, sameLocation } from '~/utils/locations'
 
 const cologne: LocationResult = {
   id: 2886242, name: 'Cologne', country: 'Germany', admin1: 'North Rhine-Westphalia',
@@ -81,7 +81,7 @@ describe('multilingual favorites', () => {
     }
     const { state, storage } = await setup('server', [], localizedFetch('server'))
 
-    state.toggleFavorite(currentLocation)
+    state.addFavorite(currentLocation)
     await vi.waitFor(() => expect(state.isLocalizing.value).toBe(false))
 
     expect(state.errorMessage.value).toBe('')
@@ -181,5 +181,67 @@ describe('multilingual favorites', () => {
     expect(resolveCityIdentity(current, [cologne, { ...cologne, id: 3178287 }], cologne.admin1)).toEqual(current)
     expect(resolveCityIdentity(current, [{ ...cologne, admin1: 'Bavaria' }], cologne.admin1)).toEqual(current)
     expect(resolveCityIdentity({ ...current, country: 'DE' }, [cologne], cologne.admin1)).toMatchObject({ id: cologne.id })
+  })
+
+  it('moves items without changing the original order array', () => {
+    const items = ['first', 'second', 'third']
+    expect(moveItem(items, 2, 0)).toEqual(['third', 'first', 'second'])
+    expect(items).toEqual(['first', 'second', 'third'])
+    expect(moveItem(items, -1, 0)).toBe(items)
+  })
+})
+
+describe('favorite ordering', () => {
+  it('adds and re-adds at the top, moves manually, and restores removal at the exact position', async () => {
+    const first: FavoriteLocation = { ...cologne, labels: { en: cologne, de: koeln } }
+    const second: FavoriteLocation = {
+      ...cologne,
+      id: 3178287,
+      name: 'Bergamo',
+      country: 'Italy',
+      latitude: 45.69,
+      longitude: 9.67,
+      timezone: 'Europe/Rome',
+      labels: {
+        en: { name: 'Bergamo', country: 'Italy' },
+        de: { name: 'Bergamo', country: 'Italien' }
+      }
+    }
+    const { state, storage, locale } = await setup('server', [first, second])
+    expect(state.favorites.value.map(location => location.name)).toEqual(['Cologne', 'Bergamo'])
+
+    state.reorderFavorite(second, 0)
+    expect(storage.value.map(location => location.id)).toEqual([second.id, first.id])
+    const removed = state.removeFavorite(first)
+    expect(removed).toEqual({ favorite: first, index: 1 })
+    state.restoreFavorite(removed!.favorite, removed!.index)
+    expect(storage.value.map(location => location.id)).toEqual([second.id, first.id])
+
+    state.removeFavorite(first)
+    state.addFavorite(first)
+    expect(storage.value.map(location => location.id)).toEqual([first.id, second.id])
+    locale.value = 'de'
+    expect(state.favorites.value.map(location => location.name)).toEqual(['Köln', 'Bergamo'])
+    expect(storage.value.map(location => location.id)).toEqual([first.id, second.id])
+  })
+
+  it('saves an edited favorites list in one step and keeps stored labels', async () => {
+    const first: FavoriteLocation = { ...cologne, labels: { en: cologne, de: koeln } }
+    const second: FavoriteLocation = {
+      ...cologne,
+      id: 3178287,
+      name: 'Bergamo',
+      country: 'Italy',
+      latitude: 45.69,
+      longitude: 9.67,
+      timezone: 'Europe/Rome',
+      labels: { en: { name: 'Bergamo', country: 'Italy' }, de: { name: 'Bergamo', country: 'Italien' } }
+    }
+    const { state, storage } = await setup('server', [first, second])
+
+    state.saveFavorites([state.favorites.value[1]!, state.favorites.value[0]!])
+    expect(storage.value).toEqual([second, first])
+    state.saveFavorites([state.favorites.value[1]!])
+    expect(storage.value).toEqual([first])
   })
 })

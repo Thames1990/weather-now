@@ -1,5 +1,5 @@
 import type { FavoriteLocation, LocationLabels, LocationResult } from '~/types/weather'
-import { favoriteLabels, localizeFavorite, sameLocation } from '~/utils/locations'
+import { favoriteLabels, localizeFavorite, moveItem, sameLocation } from '~/utils/locations'
 import { parseGeocodingResults, parseReverseGeocodeResult } from '~/utils/provider-validation'
 
 export function useFavorites() {
@@ -92,21 +92,65 @@ export function useFavorites() {
       removeFavorite(location)
       return
     }
-    storedFavorites.value = [...storedFavorites.value, { ...location }]
-    const added = storedFavorites.value[storedFavorites.value.length - 1]!
+    addFavorite(location)
+  }
+
+  function addFavorite(location: LocationResult) {
+    if (isFavorite(location)) return
+    storedFavorites.value = [{ ...location }, ...storedFavorites.value]
+    const added = storedFavorites.value[0]!
     void localize(added)
   }
 
   function removeFavorite(location: LocationResult) {
-    for (const favorite of storedFavorites.value) {
-      if (sameLocation(favorite, location)) requests.delete(favorite)
-    }
-    storedFavorites.value = storedFavorites.value.filter(favorite => !sameLocation(favorite, location))
+    const index = storedFavorites.value.findIndex(favorite => sameLocation(favorite, location))
+    if (index < 0) return undefined
+    const [removed] = storedFavorites.value.splice(index, 1)
+    if (removed) requests.delete(removed)
     if (!storedFavorites.value.length) errorMessage.value = ''
+    return removed ? { favorite: removed, index } : undefined
+  }
+
+  function restoreFavorite(favorite: FavoriteLocation, index: number) {
+    if (isFavorite(favorite)) return
+    const restored = [...storedFavorites.value]
+    restored.splice(Math.max(0, Math.min(index, restored.length)), 0, favorite)
+    storedFavorites.value = restored
+    void localize(favorite)
+  }
+
+  function reorderFavorite(location: LocationResult, toIndex: number) {
+    const index = storedFavorites.value.findIndex(favorite => sameLocation(favorite, location))
+    if (index < 0 || toIndex < 0 || toIndex >= storedFavorites.value.length) return
+    storedFavorites.value = moveItem(storedFavorites.value, index, toIndex)
+  }
+
+  function saveFavorites(locations: LocationResult[]) {
+    const saved = locations
+      .map(location => storedFavorites.value.find(favorite => sameLocation(favorite, location)))
+      .filter((favorite): favorite is FavoriteLocation => favorite !== undefined)
+    for (const favorite of storedFavorites.value) {
+      if (!saved.includes(favorite)) requests.delete(favorite)
+    }
+    storedFavorites.value = saved
+    if (!saved.length) errorMessage.value = ''
   }
 
   onMounted(() => { void retryLocalization() })
   onBeforeUnmount(() => requests.clear())
 
-  return { favorites, isFavorite, toggleFavorite, removeFavorite, displayLocation, isLocalizing, errorMessage, retryLocalization }
+  return {
+    favorites,
+    isFavorite,
+    toggleFavorite,
+    addFavorite,
+    removeFavorite,
+    restoreFavorite,
+    reorderFavorite,
+    saveFavorites,
+    displayLocation,
+    isLocalizing,
+    errorMessage,
+    retryLocalization
+  }
 }

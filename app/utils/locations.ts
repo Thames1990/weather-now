@@ -7,6 +7,21 @@ export function sameLocation(a: LocationResult, b: LocationResult): boolean {
   return a.latitude === b.latitude && a.longitude === b.longitude
 }
 
+export function locationKey(location: LocationResult): string {
+  return location.id !== undefined
+    ? `id:${location.id}`
+    : `coordinates:${location.latitude}:${location.longitude}`
+}
+
+export function moveItem<T>(items: T[], from: number, to: number): T[] {
+  if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return items
+  const reordered = [...items]
+  const [item] = reordered.splice(from, 1)
+  if (item === undefined) return items
+  reordered.splice(to, 0, item)
+  return reordered
+}
+
 function normalizedPlaceName(value: string): string {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLocaleLowerCase('en')
 }
