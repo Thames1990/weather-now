@@ -20,6 +20,7 @@ const {
   dailyForecast,
   fetchWeather,
   searchLocations,
+  clearSearch,
   chooseLocation,
   useCurrentLocation
 } = useWeather()
@@ -98,6 +99,7 @@ watch(savedLanguage, (value) => {
                     :has-searched="hasSearched"
                     :error-message="searchError"
                     @update:query="query = $event"
+                    @clear="clearSearch"
                     @select="chooseLocation"
                     @retry="searchLocations"
                   />

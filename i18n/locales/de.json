@@ -1,6 +1,7 @@
 {
   "brand": "Weather Now",
   "searchPlaceholder": "Stadt suchen",
+  "clearSearch": "Suche löschen",
   "noLocationsFound": "Keine passenden Orte gefunden.",
   "retrySearch": "Suche wiederholen",
   "useCurrentLocation": "Meinen Standort verwenden",
