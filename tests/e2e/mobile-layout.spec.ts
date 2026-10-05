@@ -139,34 +139,125 @@ test.describe('responsive dashboard layout', () => {
     }
   })
 
-  test('keeps every navbar control reachable and inside the viewport', async ({ page }) => {
+  test('keeps the responsive navbar uncluttered and all controls reachable', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
 
-    const viewport = page.viewportSize()
-    expect(viewport).not.toBeNull()
-
     const navbar = page.getByTestId('app-navbar')
-    await expect(navbar).toBeVisible()
+    const picker = navbar.getByRole('button', { name: 'Search and saved cities', exact: true })
+      .or(navbar.getByRole('combobox', { name: 'Search a city', exact: true }))
+    const location = navbar.getByLabel(/current location/i)
+    await expect(navbar.getByRole('heading', { level: 1, name: 'Weather Now' })).toBeVisible()
 
-    const controls = [
-      navbar.getByPlaceholder(/search/i),
-      navbar.getByLabel(/current location/i),
-      navbar.getByLabel(/favorite cities/i),
-      navbar.getByLabel(/language/i),
-      navbar.getByLabel(/toggle light and dark mode/i)
-    ]
+    for (const width of [360, 390, 768, 1024]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(navbar).toBeVisible()
+      await expect(picker).toBeVisible()
+      await expect(location).toBeVisible()
 
-    for (const control of controls) {
-      await expect(control).toBeVisible()
-      const box = await control.boundingBox()
-      expect(box).not.toBeNull()
-      // Regression guard: controls must not sit off-screen to the right when the navbar wraps.
-      expect(box!.x).toBeGreaterThanOrEqual(0)
-      expect(box!.x + box!.width).toBeLessThanOrEqual((viewport?.width ?? 0) + 2)
+      const controls = [picker, location]
+      if (width < 1024) {
+        const settings = navbar.getByLabel('Settings')
+        await expect(settings).toBeVisible()
+        controls.push(settings)
+
+        if (test.info().project.name === 'desktop-chrome') {
+          await location.focus()
+          await page.keyboard.press('Tab')
+          await expect(settings).toBeFocused()
+          await page.keyboard.press('Tab')
+          await expect(picker).toBeFocused()
+        }
+
+        await settings.focus()
+        await settings.press('Enter')
+        const language = page.getByRole('combobox', { name: 'Language' }).filter({ visible: true })
+        const theme = page.getByRole('button', { name: /Use (light|dark) mode/ })
+        await expect(language).toBeVisible()
+        await expect(theme).toBeVisible()
+        controls.push(language, theme)
+      } else {
+        await expect(navbar.getByLabel('Language')).toBeVisible()
+        await expect(navbar.getByRole('button', { name: /Use (light|dark) mode/ })).toBeVisible()
+        await expect(navbar.getByLabel('Settings')).toBeHidden()
+        const savedCities = navbar.getByRole('button', { name: 'Saved cities', exact: true })
+        await expect(savedCities).toBeVisible()
+        controls.push(savedCities, navbar.getByLabel('Language'), navbar.getByRole('button', { name: /Use (light|dark) mode/ }))
+      }
+
+      for (const control of controls) {
+        const box = await control.boundingBox()
+        expect(box).not.toBeNull()
+        expect(box!.x).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width + 2)
+        if (width <= 1024) {
+          expect(box!.width).toBeGreaterThanOrEqual(44)
+          expect(box!.height, `${await control.getAttribute('aria-label')} at ${width}px`).toBeGreaterThanOrEqual(44)
+        }
+      }
+
+      const iconControls = width < 1024
+        ? [location, navbar.getByLabel('Settings')]
+        : [location, navbar.getByRole('button', { name: /Use (light|dark) mode/ })]
+      for (const control of iconControls) {
+        const offset = await control.evaluate((button) => {
+          const icon = [...button.querySelectorAll('span')].find(element => element.getBoundingClientRect().width > 0)
+          if (!icon) throw new Error('Visible button icon not found')
+          const buttonBox = button.getBoundingClientRect()
+          const iconBox = icon.getBoundingClientRect()
+          return Math.abs(iconBox.x + iconBox.width / 2 - buttonBox.x - buttonBox.width / 2)
+        })
+        expect(offset).toBeLessThan(1)
+      }
+
+      if (width < 1024) {
+        await expect(picker).toBeVisible()
+        const brandBox = await navbar.getByText('Weather Now').boundingBox()
+        const locationBox = await location.boundingBox()
+        const searchBox = await picker.boundingBox()
+        expect(brandBox).not.toBeNull()
+        expect(locationBox).not.toBeNull()
+        expect(searchBox).not.toBeNull()
+        const brandCenterY = brandBox!.y + brandBox!.height / 2
+        const actionsCenterY = locationBox!.y + locationBox!.height / 2
+        expect(Math.abs(brandCenterY - actionsCenterY)).toBeLessThan(2)
+        expect(searchBox!.y).toBeGreaterThan(locationBox!.y)
+        await page.keyboard.press('Escape')
+        if (test.info().project.name === 'desktop-chrome') {
+          await expect(navbar.getByLabel('Settings')).toBeFocused()
+        }
+      } else {
+        const brandBox = await navbar.getByText('Weather Now').boundingBox()
+        const searchBox = await picker.boundingBox()
+        const locationBox = await location.boundingBox()
+        expect(brandBox).not.toBeNull()
+        expect(searchBox).not.toBeNull()
+        expect(locationBox).not.toBeNull()
+        const brandCenterY = brandBox!.y + brandBox!.height / 2
+        const searchCenterY = searchBox!.y + searchBox!.height / 2
+        const actionsCenterY = locationBox!.y + locationBox!.height / 2
+        expect(Math.abs(brandCenterY - searchCenterY)).toBeLessThan(2)
+        expect(Math.abs(searchCenterY - actionsCenterY)).toBeLessThan(2)
+      }
+
+      const navbarScrollWidth = await navbar.evaluate((el) => el.scrollWidth)
+      const navbarClientWidth = await navbar.evaluate((el) => el.clientWidth)
+      expect(navbarScrollWidth).toBeLessThanOrEqual(navbarClientWidth + 1)
     }
 
-    const navbarScrollWidth = await navbar.evaluate((el) => el.scrollWidth)
-    expect(navbarScrollWidth).toBeLessThanOrEqual((viewport?.width ?? 0) + 2)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await navbar.getByLabel('Settings').click()
+    const language = page.getByRole('combobox', { name: 'Language' }).filter({ visible: true })
+    await language.click()
+    await page.getByRole('option', { name: 'DE' }).click()
+    await expect(navbar.getByRole('button', { name: 'Suche und gespeicherte Orte' })).toBeVisible()
+
+    const theme = page.getByRole('button', { name: /(Hell|Dunkel)modus verwenden/ })
+    const wasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
+    await theme.click()
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(!wasDark)
+    await expect(theme).toHaveText(wasDark ? 'Dunkelmodus verwenden' : 'Hellmodus verwenden')
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(navbar.getByRole('button', { name: 'Suche und gespeicherte Orte' })).toBeVisible()
   })
 
   test('scrolls the dashboard on small viewports and fits without scrolling on desktop', async ({ page }) => {

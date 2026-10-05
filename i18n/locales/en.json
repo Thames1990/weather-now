@@ -1,6 +1,7 @@
 {
   "brand": "Weather Now",
   "searchPlaceholder": "Search a city",
+  "searchResults": "Search results",
   "clearSearch": "Clear search",
   "noLocationsFound": "No matching locations found.",
   "retrySearch": "Retry search",
@@ -73,6 +74,10 @@
   "insightSnow": "Snowfall expected — allow extra travel time and wear grippy shoes.",
   "insightWind": "Strong winds expected — a windproof layer is recommended.",
   "toggleTheme": "Toggle light and dark mode",
+  "settings": "Settings",
+  "locations": "Search and saved cities",
+  "switchToLight": "Use light mode",
+  "switchToDark": "Use dark mode",
   "dressForDay": "What to wear",
   "chooseClothingPreference": "Choose clothing preference",
   "neutral": "Neutral",
