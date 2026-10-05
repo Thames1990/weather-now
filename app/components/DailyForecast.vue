@@ -30,11 +30,11 @@ const rows = computed<Row[]>(() => props.forecast.map((day, index) => ({
 })))
 
 const columns = computed<TableColumn<Row>[]>(() => [
-  { accessorKey: 'day', header: t('day') },
-  { accessorKey: 'icon', header: '', cell: ({ row }) => h('span', { class: 'text-xl' }, row.original.icon) },
-  { accessorKey: 'condition', header: t('condition') },
-  { accessorKey: 'rain', header: t('rainHeader') },
-  { accessorKey: 'range', header: t('highLow') }
+  { accessorKey: 'day', header: t('day'), meta: { class: { th: 'w-[15%]' } } },
+  { accessorKey: 'icon', header: '', meta: { class: { th: 'w-[10%]' } }, cell: ({ row }) => h('span', { class: 'text-xl' }, row.original.icon) },
+  { accessorKey: 'condition', header: t('condition'), meta: { class: { th: 'w-[30%]', td: 'whitespace-normal break-words' } } },
+  { accessorKey: 'rain', header: t('rainHeader'), meta: { class: { th: 'w-[22%]' } } },
+  { accessorKey: 'range', header: t('highLow'), meta: { class: { th: 'w-[23%]' } } }
 ])
 </script>
 
@@ -50,9 +50,9 @@ const columns = computed<TableColumn<Row>[]>(() => [
         <USkeleton v-else class="h-5 w-28 rounded-md" />
       </div>
     </template>
-    <UTable v-if="isReady && rows.length" data-testid="daily-forecast-table" :data="rows" :columns="columns" class="wn-fade-in h-full min-w-[420px]" :ui="{ base: 'h-full [&_tbody_tr]:h-[calc(100%/7)]', tbody: 'h-full', th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
+    <UTable v-if="isReady && rows.length" data-testid="daily-forecast-table" :data="rows" :columns="columns" class="wn-fade-in h-full min-w-[420px]" :ui="{ base: 'table-fixed w-full h-full [&_tbody_tr]:h-[calc(100%/7)]', tbody: 'h-full', th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
     <div v-else class="flex h-full min-w-[420px] flex-col divide-y divide-default" aria-hidden="true">
-      <div v-for="index in 8" :key="index" class="grid flex-1 grid-cols-[3fr_2fr_5fr_5fr_4.5fr] items-center gap-3 px-3">
+      <div v-for="index in 8" :key="index" class="grid flex-1 grid-cols-[15fr_10fr_30fr_22fr_23fr] items-center gap-3 px-3">
         <USkeleton class="h-3.5 w-14" />
         <USkeleton v-if="index > 1" class="size-5 rounded-full" />
         <span v-else />
