@@ -34,6 +34,23 @@ const languageOptions = [
 
 const colorMode = useColorMode()
 const isReady = useAppReady()
+const isDashboardVisible = ref(false)
+const showStartupLoader = useDelayedFlag(() => isReady.value && !isDashboardVisible.value, 600)
+let isUnmounted = false
+
+watch(() => isReady.value && !isLoading.value, async (settled) => {
+  if (!settled || isDashboardVisible.value) return
+  await nextTick()
+  await document.fonts.ready
+  // Let the populated dashboard finish layout before its first visible frame.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!isUnmounted) isDashboardVisible.value = true
+    })
+  })
+})
+
+onBeforeUnmount(() => { isUnmounted = true })
 const isRefreshing = useDelayedFlag(() => isLoading.value && Boolean(current.value))
 // theme classes use `dark:` variants so the prerendered page already matches the color-mode class set before paint
 const panelThemeClass = 'border border-slate-200/80 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:shadow-[0_10px_30px_rgba(2,6,23,0.38)]'
@@ -94,8 +111,17 @@ watch(savedLanguage, (value) => {
 
 <template>
   <UApp>
-    <div class="min-h-screen w-full max-w-none overflow-x-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
-      <UDashboardGroup class="w-full max-w-none">
+    <div class="relative min-h-screen w-full max-w-none overflow-x-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+      <div v-if="showStartupLoader" role="status" class="absolute inset-0 grid place-content-center justify-items-center gap-3">
+        <UIcon name="i-lucide-cloud-sun" class="size-8 text-primary" aria-hidden="true" />
+        <span class="min-h-5 text-sm text-muted">{{ $t('loadingForecast') }}</span>
+      </div>
+      <UDashboardGroup
+        class="wn-dashboard w-full max-w-none motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out"
+        :class="isDashboardVisible ? 'visible opacity-100' : 'invisible opacity-0'"
+        :inert="!isDashboardVisible"
+        :aria-busy="!isDashboardVisible"
+      >
         <UDashboardPanel :ui="{ root: `${panelThemeClass} w-full rounded-2xl backdrop-blur-sm`, body: 'js-dashboard-scroll grid min-h-0 w-full grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:grid-cols-12 lg:auto-rows-[minmax(196px,auto)] lg:gap-3 lg:p-3 lg:overflow-hidden' }">
           <template #header>
             <header data-testid="app-navbar" class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-slate-200/80 bg-white/80 px-3 py-2 dark:border-slate-800/80 dark:bg-slate-900/90 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4">

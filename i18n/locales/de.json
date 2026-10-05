@@ -30,6 +30,7 @@
   "nowIn": "Aktuelle Bedingungen",
   "yourCoordinates": "Aktuelle Position",
   "forecastUnavailable": "Vorhersage nicht verfügbar",
+  "loadingForecast": "Deine Vorhersage wird vorbereitet...",
   "tryAgain": "Erneut versuchen",
   "errorForecastUnavailable": "Die Vorhersage konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.",
   "errorSearchUnavailable": "Die Ortssuche ist vorübergehend nicht verfügbar. Prüfe deine Verbindung und versuche es erneut.",

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import type { WeatherResponse } from '../../app/types/weather'
 
 const cardTestIds = [
   'current-weather-card',
@@ -15,7 +16,7 @@ const chartCardTestIds = [
 ]
 
 const chartHourlyTimes = Array.from({ length: 8 }, (_, index) => `2026-10-02T${String(10 + index).padStart(2, '0')}:00`)
-const chartWeatherResponse = {
+const chartWeatherResponse: WeatherResponse = {
   timezone: 'UTC',
   current: {
     time: chartHourlyTimes[0],
@@ -31,6 +32,8 @@ const chartWeatherResponse = {
   hourly: {
     time: chartHourlyTimes,
     temperature_2m: [18, 19, 19, 20, 20, 20, 19, 18],
+    apparent_temperature: [18, 19, 19, 20, 20, 20, 19, 18],
+    wind_speed_10m: Array(8).fill(5),
     precipitation_probability: Array(8).fill(0),
     precipitation: Array(8).fill(0),
     weather_code: Array(8).fill(1)
@@ -47,6 +50,107 @@ const chartWeatherResponse = {
     sunset: Array(7).fill('2026-10-02T19:00')
   }
 }
+
+test.describe('settled dashboard reveal', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('weather-now:language', JSON.stringify('en'))
+    })
+  })
+
+  test('skips the loading icon and message on fast loads', async ({ page }) => {
+    await page.addInitScript(() => {
+      new MutationObserver(() => {
+        if (document.querySelector('[role="status"]')) {
+          document.documentElement.dataset.startupLoaderShown = 'true'
+        }
+      }).observe(document, { childList: true, subtree: true })
+    })
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+    await page.goto('/')
+    await expect(page.getByTestId('app-navbar')).toBeVisible()
+    await expect(page.getByRole('status')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.dataset.startupLoaderShown)).toBeUndefined()
+  })
+
+  test('keeps setup hidden, then reveals all cards without independent animations or layout shifts', async ({ page }) => {
+    let releaseForecast!: () => void
+    const forecastReady = new Promise<void>((resolve) => { releaseForecast = resolve })
+    await page.route('**/api/weather**', async (route) => {
+      await forecastReady
+      await route.fulfill({ json: chartWeatherResponse })
+    })
+    await page.goto('/')
+
+    await expect(page.getByRole('status')).toHaveText('Preparing your forecast...')
+    await expect(page.getByTestId('app-navbar')).toBeHidden()
+    for (const testId of [...cardTestIds, ...chartCardTestIds]) {
+      await expect(page.getByTestId(testId)).toBeHidden()
+    }
+
+    releaseForecast()
+    await expect(page.getByRole('status')).toBeHidden()
+    await expect(page.getByTestId('app-navbar')).toBeVisible()
+    const cards = [...cardTestIds, ...chartCardTestIds].map(testId => page.getByTestId(testId))
+    for (const card of cards) await expect(card).toBeVisible()
+    await expect(page.getByTestId('daily-forecast-card').getByRole('row').filter({
+      has: page.getByRole('cell', { name: '20° / 12°', exact: true })
+    })).toHaveCount(7)
+    await expect(page.getByTestId('temperature-trend-card').getByRole('img')).toBeVisible()
+    expect(await page.evaluate(() => document.fonts.status)).toBe('loaded')
+
+    const before = await Promise.all(cards.map(card => card.boundingBox()))
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    const after = await Promise.all(cards.map(card => card.boundingBox()))
+    expect(after).toEqual(before)
+    for (const card of cards) {
+      const animatedChildren = await card.evaluate(element =>
+        [...element.querySelectorAll('*')].filter(child => getComputedStyle(child).animationName !== 'none').length)
+      expect(animatedChildren).toBe(0)
+    }
+  })
+
+  test('reveals a failed forecast and keeps the dashboard visible during retry', async ({ page }) => {
+    let releaseRetry!: () => void
+    const retryReady = new Promise<void>((resolve) => { releaseRetry = resolve })
+    let requests = 0
+    await page.route('**/api/weather**', async (route) => {
+      if (++requests === 1) {
+        await route.fulfill({ status: 400, json: { message: 'Forecast unavailable' } })
+        return
+      }
+      await retryReady
+      await route.fulfill({ json: chartWeatherResponse })
+    })
+    await page.goto('/')
+
+    const current = page.getByTestId('current-weather-card')
+    await expect(current.getByText('Forecast unavailable', { exact: true })).toBeVisible()
+    await expect(page.getByRole('status')).toBeHidden()
+    await current.getByRole('button', { name: 'Try again', exact: true }).click()
+    await expect.poll(() => requests).toBe(2)
+    await expect(page.getByTestId('app-navbar')).toBeVisible()
+    await expect(current).toBeVisible()
+    await expect(page.getByRole('status')).toBeHidden()
+    releaseRetry()
+    await expect(current.getByText('18°', { exact: true })).toBeVisible()
+  })
+
+  test('uses no reveal transition with reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+    await page.goto('/')
+    await expect(page.getByTestId('app-navbar')).toBeVisible()
+    const transition = await page.getByTestId('app-navbar').evaluate((navbar) => {
+      const dashboard = navbar.closest('.wn-dashboard')
+      if (!dashboard) throw new Error('Dashboard container not found')
+      return getComputedStyle(dashboard).transitionDuration
+    })
+    expect(transition).toBe('0s')
+  })
+})
 
 test.describe('responsive dashboard layout', () => {
   test('renders every dashboard card with real height and no horizontal overflow', async ({ page }) => {

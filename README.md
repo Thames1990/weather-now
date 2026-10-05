@@ -15,6 +15,14 @@ The selected language persists across reloads and new tabs, including on GitHub
 Pages. On the first visit, the app follows the browser language; a saved choice
 takes precedence on subsequent visits.
 
+On startup, the dashboard waits for preferences, weather, and fonts to settle.
+Fast loads go straight to the completed layout; a quiet loading indicator appears
+only if setup takes more than 600ms after preferences are restored, with its icon
+and text shown together. The dashboard then fades in as one layout, without
+staggered placeholder flashes. Reduced-motion users see it without the fade.
+Subsequent weather refreshes keep the dashboard visible; loading failures reveal
+the existing error message and retry action.
+
 ## Stack
 
 - Nuxt 4
