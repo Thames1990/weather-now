@@ -72,7 +72,7 @@ export function normalizeWeather(response: OpenMeteoWeatherResponse): WeatherRes
   }
 }
 
-export function selectHourlyForecast(weather: WeatherResponse, limit = 12): HourlyForecast[] {
+export function selectHourlyForecast(weather: WeatherResponse, limit = 13): HourlyForecast[] {
   const currentTime = Date.parse(weather.current.time)
   const times = weather.hourly.time.map(time => Date.parse(time))
   const intervalEnd = (index: number) => times[index + 1] ?? times[index]! + 3600000

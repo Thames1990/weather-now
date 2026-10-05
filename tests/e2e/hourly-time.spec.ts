@@ -33,28 +33,28 @@ test.describe('selected-location hourly labels', () => {
     {
       name: 'quarter-hour current reading', current: '2026-09-09T10:15:00Z',
       times: Array.from({ length: 24 }, (_, hour) => new Date(Date.UTC(2026, 8, 9, hour)).toISOString()),
-      labels: ['Jetzt', '13:00', '14:00', '15:00', '16:00', '17:00'],
-      english: ['Now', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM']
+      labels: ['Jetzt', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00'],
+      english: ['Now', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM', '7 PM', '8 PM', '9 PM', '10 PM', '11 PM', '12 AM']
     },
     {
       name: 'future-only midnight', current: '2026-09-09T21:45:00Z',
       times: Array.from({ length: 8 }, (_, hour) => new Date(Date.UTC(2026, 8, 9, 22 + hour)).toISOString()),
-      labels: ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00']
+      labels: ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00']
     },
     {
       name: 'future-only noon', current: '2026-09-09T09:45:00Z',
       times: Array.from({ length: 8 }, (_, hour) => new Date(Date.UTC(2026, 8, 9, 10 + hour)).toISOString()),
-      labels: ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+      labels: ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00']
     },
     {
       name: 'fall DST repeated hours', current: '2026-10-24T23:45:00Z',
       times: Array.from({ length: 8 }, (_, hour) => new Date(Date.UTC(2026, 9, 25, hour)).toISOString()),
-      labels: ['02:00', '02:00', '03:00', '04:00', '05:00', '06:00']
+      labels: ['02:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00']
     },
     {
       name: 'spring DST skipped hour', current: '2026-03-28T23:45:00Z',
       times: Array.from({ length: 8 }, (_, hour) => new Date(Date.UTC(2026, 2, 29, hour)).toISOString()),
-      labels: ['01:00', '03:00', '04:00', '05:00', '06:00', '07:00']
+      labels: ['01:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00']
     }
   ]
 
@@ -83,14 +83,19 @@ test.describe('selected-location hourly labels', () => {
       for (let load = 0; load < 2; load++) {
         await expect(hourly.getByText('Ortszeit · Europe/Berlin', { exact: true })).toBeVisible({ timeout: 20000 })
         await expect(hourly.getByRole('heading')).toHaveText('Stündliche Vorhersage')
-        for (const card of [hourly, temperature, precipitation]) {
+        for (const [index, card] of [hourly, temperature, precipitation].entries()) {
           for (const label of new Set(scenario.labels)) {
             await expect(card.getByText(label, { exact: true }).first()).toBeVisible()
           }
           const renderedLabels = (await card.locator('span').allTextContents())
             .map(text => text.trim())
             .filter(text => /^(Jetzt|\d{2}:\d{2})$/.test(text))
-          expect(renderedLabels.slice(0, 6)).toEqual(scenario.labels)
+          expect(renderedLabels).toEqual(scenario.labels)
+          if (index === 0) {
+            await expect(card.getByTestId('hourly-forecast-item')).toHaveCount(scenario.labels.length)
+          } else {
+            await expect(card.getByRole('img')).toHaveAttribute('aria-label', new RegExp(`across ${scenario.labels.length} readings`))
+          }
           if (scenario.labels.includes('Jetzt')) {
             await expect(card.getByText('Jetzt', { exact: true })).toHaveCount(1)
           } else {

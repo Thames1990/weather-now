@@ -26,7 +26,7 @@ const badgeLabel = computed(() => recommendation.value.accent === 'wet' ? t('rai
 </script>
 
 <template>
-  <UCard data-testid="clothing-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-center gap-3' }">
+  <UCard data-testid="clothing-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-between gap-3' }">
     <template #header>
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-highlighted">
@@ -48,7 +48,7 @@ const badgeLabel = computed(() => recommendation.value.accent === 'wet' ? t('rai
     </template>
 
     <template v-if="isReady && current">
-      <div :key="`${recommendation.title}-${gender}`" class="wn-fade-in flex items-start justify-between gap-3">
+      <div :key="`${recommendation.title}-${gender}`" data-testid="clothing-summary" class="wn-fade-in flex items-start justify-between gap-3">
         <div class="min-w-0">
           <UBadge :color="badgeColor" variant="subtle">{{ badgeLabel }}</UBadge>
           <h3 class="mt-2 font-semibold text-highlighted">{{ $t(recommendation.title) }}</h3>
@@ -61,7 +61,7 @@ const badgeLabel = computed(() => recommendation.value.accent === 'wet' ? t('rai
         {{ $t('wearForecastSummary', recommendation.forecast) }}
       </p>
 
-      <div class="grid gap-2 border-t border-default pt-3 sm:grid-cols-3">
+      <div data-testid="clothing-pieces" class="grid gap-2 border-t border-default pt-3 sm:grid-cols-3">
         <div v-for="piece in recommendation.pieces" :key="piece.label" class="wn-fade-in flex min-w-0 items-start gap-2 rounded-lg bg-elevated px-2 py-1.5 text-xs text-muted transition-colors hover:bg-primary/10 hover:text-highlighted">
           <span class="shrink-0 text-lg" aria-hidden="true">{{ piece.icon }}</span>
           <span class="min-w-0 whitespace-normal break-words leading-snug">{{ $t(piece.label) }}</span>

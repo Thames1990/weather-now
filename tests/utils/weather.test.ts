@@ -34,9 +34,16 @@ describe('hourly selection and shared labels', () => {
 
   it('selects the containing hour for a quarter-hour current reading, keeping values aligned', () => {
     const selected = selectHourlyForecast(forecast('2026-09-09T11:15:00Z', times))
-    expect(selected).toHaveLength(12)
+    expect(selected).toHaveLength(13)
     expect(selected[0]).toMatchObject({ time: times[11], isNow: true, temperature: 21, apparentTemperature: 20, windSpeed: 31, precipitation: 11, precipitationAmount: 1.1 })
+    expect(selected.at(-1)?.time).toBe(times[23])
     expect(selected.slice(1).every(hour => !hour.isNow)).toBe(true)
+  })
+
+  it('respects an explicit limit and returns the available hours when fewer than 13 remain', () => {
+    const weather = forecast('2026-09-09T22:15:00Z', times)
+    expect(selectHourlyForecast(weather, 2)).toHaveLength(2)
+    expect(selectHourlyForecast(weather)).toHaveLength(2)
   })
 
   it('uses the next interval at an exact boundary and handles the final interval', () => {

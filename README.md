@@ -11,6 +11,10 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 - Switch locales, choose system/light/dark appearance, and adjust clothing recommendations
 - Responsive, accessible UI built with Nuxt and Nuxt UI
 
+Hourly forecast, Temperature trend, and Precipitation outlook share an inclusive
+Now-to-+12-hour window (13 readings when available). Narrow hourly cards and charts
+scroll horizontally to keep every reading and its label accessible without overlap.
+
 The selected language persists across reloads and new tabs, including on GitHub
 Pages. On the first visit, the app follows the browser language; a saved choice
 takes precedence on subsequent visits.
