@@ -25,7 +25,7 @@ const {
   chooseLocation,
   useCurrentLocation
 } = useWeather()
-const { locale, t } = useI18n()
+const { locale, t, setLocaleCookie } = useI18n()
 const hourlyTimeLabels = computed(() => hourlyLabels(hourlyForecast.value, locale.value, weather.value?.timezone ?? 'UTC', t('now')))
 const languageOptions = [
   { label: 'EN', value: 'en' },
@@ -54,7 +54,10 @@ const {
 const displayedLocation = computed(() => displayLocation(selectedLocation.value))
 
 const clothingGender = usePersistentState<ClothingGender>('weather-now:clothing-gender', 'neutral')
-const savedLanguage = usePersistentState<'en' | 'de'>('weather-now:language', 'en')
+const savedLanguage = usePersistentState<'en' | 'de'>(
+  'weather-now:language',
+  isSupportedLocale(locale.value) ? locale.value : 'en'
+)
 
 function isClothingGender(value: string | null): value is ClothingGender {
   return value === 'neutral' || value === 'feminine' || value === 'masculine'
@@ -71,12 +74,17 @@ function isSupportedLocale(value: string | null): value is 'en' | 'de' {
 onMounted(() => {
   if (!isClothingGender(clothingGender.value)) clothingGender.value = 'neutral'
   if (!isSupportedLocale(savedLanguage.value)) savedLanguage.value = 'en'
-  // persisted state is restored by now; the savedLanguage watcher applies the locale before the next render
+  // Restoration may equal the default and not trigger the savedLanguage watcher.
+  locale.value = savedLanguage.value
+  setLocaleCookie(savedLanguage.value)
   isReady.value = true
 })
 
 watch(locale, (value) => {
-  if (isSupportedLocale(value)) savedLanguage.value = value
+  if (isSupportedLocale(value)) {
+    setLocaleCookie(value)
+    savedLanguage.value = value
+  }
 })
 
 watch(savedLanguage, (value) => {
