@@ -14,6 +14,8 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 Hourly forecast, Temperature trend, and Precipitation outlook share an inclusive
 Now-to-+12-hour window (13 readings when available). Narrow hourly cards and charts
 scroll horizontally to keep every reading and its label accessible without overlap.
+The 7-day forecast keeps consistent column widths when switching cities, with
+long condition labels wrapping and horizontal scrolling on narrow screens.
 
 The selected language persists across reloads and new tabs, including on GitHub
 Pages. On the first visit, the app follows the browser language; a saved choice
