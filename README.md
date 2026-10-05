@@ -21,6 +21,15 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 
 ## Favorites
 
+On desktop, use the visible **Search a city** field or its attached **Saved cities**
+button. Search shows autocomplete suggestions as you type; the button shows the saved-city count
+and opens only favorites management. On phones and portrait tablets, open **Search and saved
+cities** to access the same features. Search results appear in a separate section
+above the favorites controls and saved cities in the mobile picker. Selecting a
+city clears the search. Closing the mobile picker or pressing Escape in desktop
+search also clears it; leaving the desktop input preserves the query. On phones and portrait tablets, language and
+theme controls are available under **Settings**.
+
 Favorites automatically follow the selected language, including cities saved
 before multilingual favorites were introduced. Names are stored on your device
 for offline language switching. Existing favorites are updated when the app

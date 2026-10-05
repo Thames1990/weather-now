@@ -114,7 +114,11 @@ function cancelDrag(event: PointerEvent) {
 </script>
 
 <template>
-  <section class="w-full sm:w-[min(24rem,calc(100vw-2rem))]" :aria-label="$t('favoriteCities')">
+  <div class="max-h-[min(75vh,36rem)] w-full overflow-y-auto sm:w-[min(24rem,calc(100vw-2rem))]">
+    <div v-if="$slots.search" class="border-b border-default p-3">
+      <slot name="search" />
+    </div>
+    <section data-saved-cities tabindex="-1" class="outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary" :aria-label="$t('favoriteCities')">
     <header class="flex items-start justify-between gap-3 border-b border-default px-4 py-3">
       <div class="min-w-0">
         <h2 class="font-serif text-lg font-semibold text-highlighted">{{ $t('favoriteCities') }}</h2>
@@ -134,7 +138,7 @@ function cancelDrag(event: PointerEvent) {
       </div>
     </header>
 
-    <div class="max-h-[min(65vh,30rem)] overflow-y-auto p-3">
+    <div class="p-3">
       <div v-if="hasCurrentLocation" class="mb-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
@@ -281,5 +285,6 @@ function cancelDrag(event: PointerEvent) {
       </Teleport>
       <p class="sr-only" aria-live="polite" aria-atomic="true">{{ announcement }}</p>
     </div>
-  </section>
+    </section>
+  </div>
 </template>

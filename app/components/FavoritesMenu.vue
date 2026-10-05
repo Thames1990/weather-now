@@ -17,9 +17,11 @@ const emit = defineEmits<{
   add: [location: LocationResult]
   save: [favorites: LocationResult[]]
   retry: []
+  close: []
 }>()
 
 const isOpen = ref(false)
+const isReady = useAppReady()
 const isDesktop = ref(false)
 const isManaging = ref(false)
 // Edits stay in this draft until Done; closing the panel discards them.
@@ -27,20 +29,50 @@ const draft = ref<LocationResult[]>()
 const draftRemoved = ref<LocationResult[]>([])
 const lastRemoval = ref<{ location: LocationResult; index: number }>()
 const triggerWrapper = ref<HTMLElement>()
+const panelId = useId()
+const panel = ref<HTMLElement>()
+const savedCitiesButton = ref<{ $el: HTMLButtonElement }>()
+let shouldReturnFocus = false
 let mediaQuery: MediaQueryList | undefined
 
 function updateBreakpoint(event: MediaQueryList | MediaQueryListEvent) {
+  if (isDesktop.value !== event.matches) isOpen.value = false
   isDesktop.value = event.matches
+}
+
+async function openSavedCities() {
+  if (!isReady.value) return
+  shouldReturnFocus = false
+  isOpen.value = true
+  await nextTick()
+  panel.value?.querySelector<HTMLElement>('[data-saved-cities]')?.focus()
+}
+
+function interactOutside(event: CustomEvent<{ originalEvent: Event }>) {
+  const target = event.detail.originalEvent.target
+  if (target instanceof Node && savedCitiesButton.value?.$el.contains(target)) event.preventDefault()
+}
+
+function returnDesktopFocus(event: Event) {
+  event.preventDefault()
+  const activeElement = document.activeElement
+  const returnFocus = shouldReturnFocus || !activeElement || activeElement === document.body || panel.value?.contains(activeElement)
+  shouldReturnFocus = false
+  if (!returnFocus) return
+  savedCitiesButton.value?.$el.focus()
 }
 
 function selectLocation(location: LocationResult) {
   emit('select', location)
+  shouldReturnFocus = isDesktop.value
   isOpen.value = false
 }
 
 function closeWithFocusReturn() {
   if (isOpen.value) return
   stopManaging()
+  emit('close')
+  if (isDesktop.value) return
   void nextTick(() => {
     const activeElement = document.activeElement
     if (activeElement && activeElement !== document.body && !triggerWrapper.value?.contains(activeElement)) return
@@ -135,41 +167,69 @@ function managerListeners() {
     undo: undoDraftRemoval
   }
 }
+
+const desktopContent = {
+  side: 'bottom' as const,
+  align: 'end' as const,
+  sideOffset: 8,
+  onOpenAutoFocus: (event: Event) => event.preventDefault(),
+  onCloseAutoFocus: returnDesktopFocus,
+  onEscapeKeyDown: () => { shouldReturnFocus = true },
+  onInteractOutside: interactOutside
+}
 </script>
 
 <template>
   <div ref="triggerWrapper">
-    <UPopover v-if="isDesktop" v-model:open="isOpen" :content="{ side: 'bottom', align: 'end', sideOffset: 8 }">
-      <UButton
-        icon="i-lucide-bookmark"
-        color="primary"
-        variant="soft"
-        class="min-h-11 min-w-11"
-        :aria-label="$t('favoriteCities')"
-        :aria-expanded="isOpen"
-        :aria-haspopup="'dialog'"
-      >
-        <UBadge v-if="favorites.length" color="primary" variant="subtle" size="sm">{{ favorites.length }}</UBadge>
-      </UButton>
+    <UPopover v-if="isDesktop" v-model:open="isOpen" :reference="savedCitiesButton?.$el" :content="desktopContent">
+      <template #anchor>
+        <div class="flex w-full items-center">
+          <div class="min-w-0 flex-1">
+            <slot name="desktop-search" :select-location="selectLocation" />
+          </div>
+          <UButton
+            ref="savedCitiesButton"
+            icon="i-lucide-bookmark"
+            color="primary"
+            variant="soft"
+            class="min-h-[48px] shrink-0 rounded-l-none"
+            :disabled="!isReady"
+            :aria-label="$t('savedCities')"
+            :aria-expanded="isOpen"
+            :aria-controls="panelId"
+            aria-haspopup="dialog"
+            @click="openSavedCities"
+          >
+            {{ $t('savedCities') }}
+            <UBadge color="primary" variant="subtle" size="sm">{{ favorites.length }}</UBadge>
+          </UButton>
+        </div>
+      </template>
       <template #content>
-        <FavoritesManagerContent v-bind="managerProps()" v-on="managerListeners()" />
+        <div :id="panelId" ref="panel">
+          <FavoritesManagerContent v-bind="managerProps()" v-on="managerListeners()" />
+        </div>
       </template>
     </UPopover>
 
-    <UDrawer v-else v-model:open="isOpen" :title="$t('favoriteCities')" direction="bottom" :handle="true">
+    <UDrawer v-else v-model:open="isOpen" :title="$t('locations')" direction="bottom" :handle="true">
       <UButton
-        icon="i-lucide-bookmark"
+        icon="i-lucide-search"
         color="primary"
         variant="soft"
-        class="min-h-11 min-w-11"
-        :aria-label="$t('favoriteCities')"
+        class="min-h-[48px] w-full justify-start"
+        :aria-label="$t('locations')"
+        :disabled="!isReady"
         :aria-expanded="isOpen"
         :aria-haspopup="'dialog'"
       >
+        <span class="min-w-0 flex-1 truncate text-left">{{ $t('locations') }}</span>
         <UBadge v-if="favorites.length" color="primary" variant="subtle" size="sm">{{ favorites.length }}</UBadge>
       </UButton>
       <template #content>
-        <FavoritesManagerContent v-bind="managerProps()" v-on="managerListeners()" />
+        <FavoritesManagerContent v-bind="managerProps()" v-on="managerListeners()">
+          <template #search><slot name="search" :select-location="selectLocation" /></template>
+        </FavoritesManagerContent>
       </template>
     </UDrawer>
   </div>

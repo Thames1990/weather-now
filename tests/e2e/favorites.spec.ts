@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Route } from '@playwright/test'
+import type { Page, Route } from '@playwright/test'
 import type { LocationResult, OpenMeteoWeatherResponse } from '../../app/types/weather'
 import { normalizeWeather } from '../../app/utils/weather'
 
@@ -26,6 +26,35 @@ const forecast: OpenMeteoWeatherResponse = {
   }
 }
 
+function locationPicker(page: Page) {
+  return page.getByRole('button', { name: /^(Search and saved cities|Suche und gespeicherte Orte)$/ })
+    .or(page.getByTestId('app-navbar').getByRole('button', { name: /^(Saved cities|Gespeicherte Orte)$/ }))
+}
+
+function citySearch(page: Page) {
+  return page.getByRole('textbox', { name: 'Search a city' })
+    .or(page.getByRole('combobox', { name: 'Search a city' }))
+}
+
+function cityResult(page: Page) {
+  return page.getByRole('button', { name: /Cologne.*Germany/ })
+    .or(page.getByRole('option', { name: /Cologne/ }))
+}
+
+async function setLanguage(page: Page, language: 'EN' | 'DE') {
+  await expect(page.getByRole('region', { name: /^(Favorite cities|Favoriten)$/ })).toBeHidden()
+  const settings = page.getByRole('button', { name: /^(Settings|Einstellungen)$/ })
+  if (await settings.isVisible()) await settings.click()
+  await page.getByRole('combobox', { name: /^(Language|Sprache)$/ }).click()
+  await page.getByRole('option', { name: language, exact: true }).click()
+  await expect(page.getByRole('option', { name: language, exact: true })).toBeHidden()
+  if (await settings.isVisible()) {
+    await page.getByRole('combobox', { name: /^(Language|Sprache)$/ }).focus()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('combobox', { name: /^(Language|Sprache)$/ })).toBeHidden()
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   // The dev server's Nuxt DevTools button overlays the bottom of small viewports and intercepts pointer input.
   await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
@@ -37,10 +66,83 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://api.open-meteo.com/v1/forecast?**', route => route.fulfill({ json: forecast }))
 })
 
+test('keeps desktop search and saved cities in separate panels', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop-chrome', 'Desktop-specific search interaction')
+  await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))
+  await page.route('https://geocoding-api.open-meteo.com/v1/search?**', route => route.fulfill({ json: { results: [cologne] } }))
+  await page.goto('/')
+  const search = citySearch(page)
+  const manager = page.getByRole('region', { name: 'Favorite cities' })
+  await expect(locationPicker(page)).toBeEnabled({ timeout: 15000 })
+  await expect(search).toBeVisible()
+  await expect(manager).toBeHidden()
+  const savedCities = page.getByRole('button', { name: 'Saved cities', exact: true })
+  await expect(savedCities).toBeVisible()
+  await expect(savedCities).toContainText('0')
+  await savedCities.click()
+  await expect(manager).toBeFocused()
+  await expect.poll(async () => {
+    const buttonBox = await savedCities.boundingBox()
+    const panelBox = await manager.boundingBox()
+    if (!buttonBox || !panelBox) return Number.POSITIVE_INFINITY
+    return Math.abs(buttonBox.x + buttonBox.width - panelBox.x - panelBox.width)
+  }).toBeLessThan(2)
+  await expect(page.getByRole('region', { name: 'Search results' })).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(manager).toBeHidden()
+  await expect(savedCities).toBeFocused()
+  await search.focus()
+  await expect(manager).toBeHidden()
+  await expect(search).toBeFocused()
+  await expect(search).toHaveCount(1)
+  await search.fill('Cologne')
+  const result = cityResult(page)
+  await expect(result).toBeVisible()
+  const resultsSection = page.getByRole('listbox')
+  await expect(resultsSection).toBeVisible()
+  await expect(manager.getByRole('list', { name: 'Search results' })).toHaveCount(0)
+  await expect(manager).toBeHidden()
+  await savedCities.click()
+  await expect(manager).toBeFocused()
+  await expect(resultsSection).toBeHidden()
+  await search.click()
+  await search.fill('Cologne')
+  await expect(result).toBeVisible()
+  await expect(manager).toBeHidden()
+  await search.press('ArrowDown')
+  await expect(search).toHaveAttribute('aria-activedescendant', /.+/)
+  await search.press('Enter')
+  await expect(manager).toBeHidden()
+  await expect(search).toBeFocused()
+  await expect(search).toHaveValue('')
+  await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
+
+  await search.click()
+  await expect(resultsSection).toBeHidden()
+  await search.fill('Cancelled')
+  await expect(resultsSection).toBeVisible()
+  await search.press('Escape')
+  await expect(manager).toBeHidden()
+  await expect(search).toBeFocused()
+  await expect(search).toHaveValue('')
+  await search.click()
+  await search.fill('Cologne')
+  await expect(resultsSection).toBeVisible()
+  await page.getByLabel('Language', { exact: true }).focus()
+  await expect(resultsSection).toBeHidden()
+  await expect(page.getByLabel('Language', { exact: true })).toBeFocused()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(search).toBeHidden()
+  await page.getByRole('button', { name: 'Search and saved cities', exact: true }).click()
+  await expect(search).toBeVisible()
+})
+
 test('clears search results and errors without changing the displayed location', async ({ page }) => {
+  let searchAvailable = false
   const geocode = async (route: Route) => {
     const name = new URL(route.request().url()).searchParams.get('name')
-    if (name === 'RequestError') {
+    if (name === 'RequestError' && !searchAvailable) {
       await route.abort()
       return
     }
@@ -49,11 +151,11 @@ test('clears search results and errors without changing the displayed location',
   await page.route('**/api/geocode?**', geocode)
   await page.route('https://geocoding-api.open-meteo.com/v1/search?**', geocode)
   await page.goto('/')
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await locationPicker(page).click()
 
-  const search = page.getByRole('combobox', { name: 'Search a city' })
+  const search = citySearch(page)
   const clear = page.getByRole('button', { name: 'Clear search', exact: true })
-  const weatherLocation = page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })
+  const weatherLocation = page.getByTestId('current-weather-card').getByRole('heading', { level: 2, includeHidden: true })
   await expect(weatherLocation).toHaveText('London')
   await expect(clear).toHaveCount(0)
 
@@ -84,6 +186,14 @@ test('clears search results and errors without changing the displayed location',
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByRole('listbox')).toBeHidden()
   await expect(weatherLocation).toHaveText('London')
+
+  await search.fill('RequestError')
+  await expect(page.getByRole('alert')).toContainText('Location search is temporarily unavailable.')
+  searchAvailable = true
+  await page.getByRole('button', { name: 'Retry search', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByText('No matching locations found.', { exact: true })).toBeVisible()
+  await expect(search).toHaveValue('RequestError')
 })
 
 for (const action of ['current location', 'favorite']) {
@@ -107,31 +217,39 @@ for (const action of ['current location', 'favorite']) {
     await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))
     await page.route('https://geocoding-api.open-meteo.com/v1/search?**', route => route.fulfill({ json: { results: [cologne] } }))
     await page.goto('/')
-    await expect(page.getByLabel('Language', { exact: true })).toBeVisible({ timeout: 15000 })
-    const search = page.getByRole('combobox', { name: 'Search a city' })
+    await locationPicker(page).click()
+    const search = citySearch(page)
     const heading = page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })
     await search.fill('Cologne')
-    await page.getByRole('option', { name: /Cologne/ }).click()
+    await cityResult(page).click()
     await expect(heading).toHaveText('Cologne')
+    await expect(page.getByRole('list', { name: 'Search results' })).toBeHidden()
 
     if (action === 'current location') {
       await page.getByRole('button', { name: 'Use my current location', exact: true }).click()
     } else {
-      await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+      await locationPicker(page).click()
       await page.getByRole('button', { name: /Select Oslo, Norway/ }).click()
     }
     await expect(heading).toHaveText('Oslo')
+    await locationPicker(page).click()
     await expect(search).toHaveValue('')
     await expect(search).toHaveAttribute('placeholder', 'Search a city')
     await search.focus()
-    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByRole('list', { name: 'Search results' })).toHaveCount(0)
     await expect(page.getByRole('status')).toHaveCount(0)
     await search.fill('Cologne')
-    await expect(page.getByRole('option', { name: /Cologne/ })).toBeVisible()
-    await search.press('ArrowDown')
-    await search.press('Enter')
+    const result = cityResult(page)
+    await expect(result).toBeVisible()
+    if (test.info().project.name === 'desktop-chrome') {
+      await search.press('ArrowDown')
+      await search.press('Enter')
+    } else {
+      await result.focus()
+      await result.press('Enter')
+    }
     await expect(heading).toHaveText('Cologne')
-    await expect(search).toHaveValue('')
+    await expect(page.getByRole('list', { name: 'Search results' })).toBeHidden()
   })
 }
 
@@ -155,10 +273,10 @@ for (const search of ['Köln', 'Cologne']) {
       await route.fulfill({ json: query.has('id') ? place : { results: [place] } })
     })
     await page.goto('/')
-    await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
-    await page.getByRole('combobox', { name: 'Search a city' }).fill(search)
-    await page.getByRole('option', { name: /Cologne/ }).click()
-    await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+    await locationPicker(page).click()
+    await citySearch(page).fill(search)
+    await cityResult(page).click()
+    await locationPicker(page).click()
     await page.getByRole('button', { name: 'Add Cologne to favorites', exact: true }).click()
     await expect.poll(() => page.evaluate(() => {
       const saved = JSON.parse(localStorage.getItem('weather-now:favorites') || '[]')
@@ -167,9 +285,8 @@ for (const search of ['Köln', 'Cologne']) {
     expect(lookupCount).toBe(2)
     await page.keyboard.press('Escape')
 
-    await page.getByLabel('Language', { exact: true }).click()
-    await page.getByRole('option', { name: 'DE', exact: true }).click()
-    await page.getByRole('button', { name: 'Favoriten', exact: true }).click()
+    await setLanguage(page, 'DE')
+    await locationPicker(page).click()
     await expect(page.getByRole('button', { name: /Köln auswählen/ })).toBeVisible()
     await page.getByRole('button', { name: 'Liste bearbeiten', exact: true }).click()
     const remove = page.getByRole('button', { name: 'Köln aus Favoriten entfernen', exact: true })
@@ -177,19 +294,17 @@ for (const search of ['Köln', 'Cologne']) {
     await expect(remove).toBeFocused()
     await page.keyboard.press('Escape')
 
-    await page.getByLabel('Sprache', { exact: true }).click()
-    await page.getByRole('option', { name: 'EN', exact: true }).click()
-    await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+    await setLanguage(page, 'EN')
+    await locationPicker(page).click()
     await expect(page.getByRole('button', { name: /Select Cologne/ })).toBeVisible()
     await page.keyboard.press('Escape')
 
     await page.reload()
-    await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+    await expect(locationPicker(page)).toBeVisible()
     await page.waitForLoadState('networkidle')
     await page.context().setOffline(true)
-    await page.getByLabel('Language', { exact: true }).click()
-    await page.getByRole('option', { name: 'DE', exact: true }).click()
-    await page.getByRole('button', { name: 'Favoriten', exact: true }).click()
+    await setLanguage(page, 'DE')
+    await locationPicker(page).click()
     await expect(page.getByRole('button', { name: /Köln auswählen/ })).toBeVisible()
     expect(lookupCount).toBe(2)
     await page.getByRole('button', { name: 'Liste bearbeiten', exact: true }).click()
@@ -218,19 +333,18 @@ test('migrates a favorite saved before multilingual labels existed', async ({ pa
     return route.fulfill({ json: query.has('id') ? place : { results: [place] } })
   })
   await page.goto('/')
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await expect(locationPicker(page)).toBeVisible()
+  await expect(locationPicker(page)).toBeEnabled({ timeout: 15000 })
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('weather-now:favorites') || '[]')
     return saved[0]?.labels?.de?.name
   })).toBe('Köln')
-  await page.getByLabel('Language', { exact: true }).click()
-  await page.getByRole('option', { name: 'DE', exact: true }).click()
-  await page.getByRole('button', { name: 'Favoriten', exact: true }).click()
+  await setLanguage(page, 'DE')
+  await locationPicker(page).click()
   await page.getByRole('button', { name: /Köln auswählen/ }).click()
   await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Köln')
   await page.keyboard.press('Escape')
-  await page.getByLabel('Sprache', { exact: true }).click()
-  await page.getByRole('option', { name: 'EN', exact: true }).click()
+  await setLanguage(page, 'EN')
   await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
 })
 
@@ -253,10 +367,10 @@ test('manages favorites with keyboard reordering, exact-position undo, and opene
   }, { first: cologne, second: bergamo })
   await page.goto('/')
 
-  const trigger = page.getByRole('button', { name: 'Favorite cities', exact: true })
+  const trigger = locationPicker(page)
   const savedNames = () => page.evaluate(() => JSON.parse(localStorage.getItem('weather-now:favorites') || '[]').map((favorite: LocationResult) => favorite.name))
   const visibleNames = () => page.getByRole('listitem').evaluateAll(rows => rows.map(row => row.querySelector('[data-favorite-name]')?.textContent?.trim()))
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await expect(trigger).toBeVisible()
   await trigger.click()
   await expect(page.getByRole('button', { name: 'Edit list', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Close favorites', exact: true })).toHaveCount(0)
@@ -317,7 +431,7 @@ test('manages favorites with keyboard reordering, exact-position undo, and opene
   await expect.poll(savedNames).toEqual(['Cologne', 'Bergamo'])
 
   await page.reload()
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await expect(trigger).toBeVisible()
   await trigger.click()
   const reloadedFavorites = page.getByRole('listitem')
   await expect(reloadedFavorites.nth(0).getByRole('button', { name: 'Select Cologne, North Rhine-Westphalia, Germany', exact: true })).toBeVisible()
@@ -362,10 +476,11 @@ test('recognizes the same saved city from current-location coordinates', async (
   await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))
   await page.goto('/')
 
+  await expect(locationPicker(page)).toBeEnabled({ timeout: 15000 })
   await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
   await page.getByRole('button', { name: 'Use my current location', exact: true }).click()
   await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
-  await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+  await locationPicker(page).click()
   await expect(page.getByRole('button', { name: 'Select Cologne, North Rhine-Westphalia, Germany', exact: true }))
     .toHaveAttribute('aria-current', 'true')
   await expect(page.getByRole('button', { name: 'Add Cologne to favorites', exact: true })).toHaveCount(0)
@@ -391,8 +506,7 @@ test('reorders favorites with touch pointer input', async ({ page }) => {
     ]))
   }, { first: cologne, second: bergamo })
   await page.goto('/')
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+  await locationPicker(page).click()
   await page.getByRole('button', { name: 'Edit list', exact: true }).click()
 
   const cologneRow = page.getByRole('listitem').filter({ hasText: 'Cologne' })
@@ -451,11 +565,11 @@ test('reorders favorites with touch pointer input', async ({ page }) => {
 
 test('keeps the favorites manager within common phone, tablet, and desktop widths', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await expect(locationPicker(page)).toBeVisible()
 
   for (const width of [360, 390, 768, 1024]) {
     await page.setViewportSize({ width, height: 900 })
-    const trigger = page.getByRole('button', { name: 'Favorite cities', exact: true })
+    const trigger = locationPicker(page)
     await expect(trigger).toBeVisible()
     // The trigger remounts when the popover/drawer breakpoint changes, so wait for the settled element.
     let triggerBox: Awaited<ReturnType<typeof trigger.boundingBox>> = null
@@ -485,9 +599,10 @@ test('keeps favorites saved when translations fail and lets the user retry', asy
     ? route.fulfill({ status: 503, json: { message: 'Unavailable' } })
     : route.fulfill({ json: new URL(route.request().url()).searchParams.get('language') === 'de' ? koeln : cologne }))
   await page.goto('/')
-  await expect(page.getByLabel('Language', { exact: true })).toBeVisible()
+  await expect(locationPicker(page)).toBeVisible()
+  await expect(locationPicker(page)).toBeEnabled({ timeout: 15000 })
   await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
-  await page.getByRole('button', { name: 'Favorite cities', exact: true }).click()
+  await locationPicker(page).click()
   await page.getByRole('button', { name: 'Add Cologne to favorites', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Your favorites are safe')
   await expect(page.getByRole('button', { name: /Select Cologne/ })).toBeVisible()

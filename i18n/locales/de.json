@@ -1,6 +1,7 @@
 {
   "brand": "Weather Now",
   "searchPlaceholder": "Stadt suchen",
+  "searchResults": "Suchergebnisse",
   "clearSearch": "Suche löschen",
   "noLocationsFound": "Keine passenden Orte gefunden.",
   "retrySearch": "Suche wiederholen",
@@ -73,6 +74,10 @@
   "insightSnow": "Schneefall erwartet — plane mehr Zeit ein und trag griffige Schuhe.",
   "insightWind": "Starke Böen erwartet — eine winddichte Schicht wird empfohlen.",
   "toggleTheme": "Hell-/Dunkelmodus umschalten",
+  "settings": "Einstellungen",
+  "locations": "Suche und gespeicherte Orte",
+  "switchToLight": "Hellmodus verwenden",
+  "switchToDark": "Dunkelmodus verwenden",
   "dressForDay": "Kleidungsempfehlung",
   "chooseClothingPreference": "Kleidungsstil auswählen",
   "neutral": "Neutral",

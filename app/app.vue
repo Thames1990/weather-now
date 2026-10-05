@@ -37,10 +37,11 @@ const isReady = useAppReady()
 const isRefreshing = useDelayedFlag(() => isLoading.value && Boolean(current.value))
 // theme classes use `dark:` variants so the prerendered page already matches the color-mode class set before paint
 const panelThemeClass = 'border border-slate-200/80 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:shadow-[0_10px_30px_rgba(2,6,23,0.38)]'
-const navbarThemeClass = 'border-b border-slate-200/80 bg-white/80 dark:border-slate-800/80 dark:bg-slate-900/90'
 function toggleColorMode() {
   colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
 }
+const themeAction = computed(() => t(colorMode.value === 'dark' ? 'switchToLight' : 'switchToDark'))
+const headerIconButtonClass = 'min-h-[48px] min-w-[48px] justify-center'
 
 onMounted(() => {
   if (!colorMode.value) colorMode.preference = 'dark'
@@ -89,11 +90,58 @@ watch(savedLanguage, (value) => {
       <UDashboardGroup class="w-full max-w-none">
         <UDashboardPanel :ui="{ root: `${panelThemeClass} w-full rounded-2xl backdrop-blur-sm`, body: 'js-dashboard-scroll grid min-h-0 w-full grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:grid-cols-12 lg:auto-rows-[minmax(196px,auto)] lg:gap-3 lg:p-3 lg:overflow-hidden' }">
           <template #header>
-            <UDashboardNavbar data-testid="app-navbar" :title="$t('brand')" icon="i-lucide-cloud-sun" :toggle="false" :ui="{ root: `${navbarThemeClass} h-auto flex-wrap gap-2 px-2 py-3 sm:px-3`, right: 'w-full min-w-0 sm:w-auto' }">
-              <template #right>
-                <div class="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:flex-nowrap sm:gap-2">
+            <header data-testid="app-navbar" class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-slate-200/80 bg-white/80 px-3 py-2 dark:border-slate-800/80 dark:bg-slate-900/90 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4">
+              <div class="flex min-w-0 items-center gap-2">
+                <UIcon name="i-lucide-cloud-sun" class="size-6 shrink-0 text-primary" aria-hidden="true" />
+                <h1 class="truncate font-semibold text-highlighted">{{ $t('brand') }}</h1>
+              </div>
+
+              <div class="flex items-center justify-end gap-1.5 lg:col-start-3 lg:row-start-1 lg:gap-2">
+                <UTooltip :text="$t('useCurrentLocation')">
+                  <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" :class="headerIconButtonClass" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
+                </UTooltip>
+                <div class="hidden items-center gap-2 lg:flex">
+                  <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-24" :ui="{ base: 'min-h-[48px]' }" :aria-label="$t('language')" />
+                  <USkeleton v-else class="h-[48px] w-24 rounded-md" />
+                  <UButton color="neutral" variant="ghost" square :class="headerIconButtonClass" :aria-label="themeAction" @click="toggleColorMode">
+                    <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
+                    <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
+                  </UButton>
+                </div>
+
+                <UPopover class="lg:hidden" :content="{ side: 'bottom', align: 'end' }">
+                  <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :class="headerIconButtonClass" :aria-label="$t('settings')" />
+                  <template #content>
+                    <div class="grid min-w-52 gap-3 p-3">
+                      <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" class="w-full" :ui="{ base: 'min-h-[48px]' }" :aria-label="$t('language')" />
+                      <USkeleton v-else class="h-[48px] w-full rounded-md" />
+                      <UButton color="neutral" variant="ghost" class="min-h-[48px] justify-start" :aria-label="themeAction" @click="toggleColorMode">
+                        <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
+                        <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
+                        {{ themeAction }}
+                      </UButton>
+                    </div>
+                  </template>
+                </UPopover>
+              </div>
+
+              <FavoritesMenu
+                class="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-1"
+                :favorites="favorites"
+                :current-location="displayedLocation"
+                :has-current-location="isReady && Boolean(current) && selectedLocation.name !== LOCATING_LOCATION_NAME && selectedLocation.name !== LOADING_LOCATION_NAME"
+                :is-current-favorite="isFavorite(selectedLocation)"
+                :is-localizing="isLocalizing"
+                :error-message="favoriteError"
+                @select="chooseLocation"
+                @add="addFavorite"
+                @save="saveFavorites"
+                @retry="retryLocalization"
+                @close="clearSearch"
+              >
+                <template #desktop-search="{ selectLocation }">
                   <WeatherSearch
-                    class="order-1 w-full min-w-0 basis-full sm:order-none sm:w-64 sm:basis-auto"
+                    input-only
                     :query="query"
                     :results="searchResults"
                     :is-searching="isSearching"
@@ -101,35 +149,25 @@ watch(savedLanguage, (value) => {
                     :error-message="searchError"
                     @update:query="query = $event"
                     @clear="clearSearch"
-                    @select="chooseLocation"
+                    @select="selectLocation"
                     @retry="searchLocations"
                   />
-                  <div class="order-2 flex flex-wrap items-center gap-1.5 sm:order-none sm:flex-nowrap sm:gap-2">
-                    <UTooltip :text="$t('useCurrentLocation')">
-                      <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" class="min-h-11 min-w-11" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
-                    </UTooltip>
-                    <FavoritesMenu
-                      :favorites="favorites"
-                      :current-location="displayedLocation"
-                      :has-current-location="isReady && Boolean(current) && selectedLocation.name !== LOCATING_LOCATION_NAME && selectedLocation.name !== LOADING_LOCATION_NAME"
-                      :is-current-favorite="isFavorite(selectedLocation)"
-                      :is-localizing="isLocalizing"
-                      :error-message="favoriteError"
-                      @select="chooseLocation"
-                      @add="addFavorite"
-                      @save="saveFavorites"
-                      @retry="retryLocalization"
-                    />
-                    <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-20 sm:w-24" :aria-label="$t('language')" />
-                    <USkeleton v-else class="h-8 w-20 rounded-md sm:w-24" />
-                    <UButton color="neutral" variant="ghost" square :aria-label="$t('toggleTheme')" @click="toggleColorMode">
-                      <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
-                      <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
-                    </UButton>
-                  </div>
-                </div>
-              </template>
-            </UDashboardNavbar>
+                </template>
+                <template #search="{ selectLocation }">
+                  <WeatherSearch
+                    :query="query"
+                    :results="searchResults"
+                    :is-searching="isSearching"
+                    :has-searched="hasSearched"
+                    :error-message="searchError"
+                    @update:query="query = $event"
+                    @clear="clearSearch"
+                    @select="selectLocation"
+                    @retry="searchLocations"
+                  />
+                </template>
+              </FavoritesMenu>
+            </header>
           </template>
 
           <template #body>
