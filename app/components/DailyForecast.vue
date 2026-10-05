@@ -50,9 +50,9 @@ const columns = computed<TableColumn<Row>[]>(() => [
         <USkeleton v-else class="h-5 w-28 rounded-md" />
       </div>
     </template>
-    <UTable v-if="isReady && rows.length" :data="rows" :columns="columns" class="wn-fade-in h-full min-w-[420px]" :ui="{ th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
-    <div v-else class="min-w-[420px] divide-y divide-default" aria-hidden="true">
-      <div v-for="index in 8" :key="index" class="grid grid-cols-[3fr_2fr_5fr_5fr_4.5fr] items-center gap-3 px-3" :class="index === 1 ? 'py-2' : 'py-1.5'">
+    <UTable v-if="isReady && rows.length" data-testid="daily-forecast-table" :data="rows" :columns="columns" class="wn-fade-in h-full min-w-[420px]" :ui="{ base: 'h-full [&_tbody_tr]:h-[calc(100%/7)]', tbody: 'h-full', th: 'py-1.5 px-3 text-xs sm:text-sm', td: 'py-1 px-3 text-xs sm:text-sm', tr: 'hover:bg-elevated transition-colors' }" />
+    <div v-else class="flex h-full min-w-[420px] flex-col divide-y divide-default" aria-hidden="true">
+      <div v-for="index in 8" :key="index" class="grid flex-1 grid-cols-[3fr_2fr_5fr_5fr_4.5fr] items-center gap-3 px-3">
         <USkeleton class="h-3.5 w-14" />
         <USkeleton v-if="index > 1" class="size-5 rounded-full" />
         <span v-else />

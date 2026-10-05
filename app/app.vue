@@ -222,7 +222,7 @@ watch(savedLanguage, (value) => {
                   <USkeleton v-else as="span" class="my-1 block h-5 w-40" />
                 </h2>
               </template>
-              <LineChart v-if="isReady && hourlyForecast.length" class="wn-fade-in" :values="hourlyForecast.slice(0, 8).map((hour) => hour.temperature)" :labels="hourlyTimeLabels.slice(0, 8)" unit="°" color="var(--ui-primary)" />
+              <LineChart v-if="isReady && hourlyForecast.length" class="wn-fade-in" :values="hourlyForecast.map((hour) => hour.temperature)" :labels="hourlyTimeLabels" unit="°" color="var(--ui-primary)" />
               <ChartSkeleton v-else variant="line" />
             </UCard>
 
@@ -236,8 +236,9 @@ watch(savedLanguage, (value) => {
               <BarChart
                 v-if="isReady && hourlyForecast.length"
                 class="wn-fade-in"
-                :values="hourlyForecast.slice(0, 6).map((hour) => hour.precipitationAmount)"
-                :labels="hourlyTimeLabels.slice(0, 6)"
+                :values="hourlyForecast.map((hour) => hour.precipitationAmount)"
+                :labels="hourlyTimeLabels"
+                :min-column-width="3.5"
                 unit="mm"
                 color="bg-primary"
                 :format-value="(value) => value.toFixed(1)"

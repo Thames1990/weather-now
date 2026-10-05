@@ -15,7 +15,7 @@ const chartCardTestIds = [
   'sun-hours-card'
 ]
 
-const chartHourlyTimes = Array.from({ length: 8 }, (_, index) => `2026-10-02T${String(10 + index).padStart(2, '0')}:00`)
+const chartHourlyTimes = Array.from({ length: 13 }, (_, index) => `2026-10-02T${String(10 + index).padStart(2, '0')}:00`)
 const chartWeatherResponse: WeatherResponse = {
   timezone: 'UTC',
   current: {
@@ -31,12 +31,12 @@ const chartWeatherResponse: WeatherResponse = {
   },
   hourly: {
     time: chartHourlyTimes,
-    temperature_2m: [18, 19, 19, 20, 20, 20, 19, 18],
-    apparent_temperature: [18, 19, 19, 20, 20, 20, 19, 18],
-    wind_speed_10m: Array(8).fill(5),
-    precipitation_probability: Array(8).fill(0),
-    precipitation: Array(8).fill(0),
-    weather_code: Array(8).fill(1)
+    temperature_2m: Array.from({ length: 13 }, (_, index) => 18 + index % 3),
+    apparent_temperature: Array.from({ length: 13 }, (_, index) => 18 + index % 3),
+    wind_speed_10m: Array(13).fill(5),
+    precipitation_probability: Array(13).fill(0),
+    precipitation: Array(13).fill(0),
+    weather_code: Array(13).fill(1)
   },
   daily: {
     time: ['2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'],
@@ -153,6 +153,112 @@ test.describe('settled dashboard reveal', () => {
 })
 
 test.describe('responsive dashboard layout', () => {
+  test('aligns chart labels with points and keeps hourly text separated at medium widths and zoom', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop-chrome')
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+
+    for (const language of ['en', 'de']) {
+      await page.goto('/')
+      await page.evaluate(language => localStorage.setItem('weather-now:language', JSON.stringify(language)), language)
+      await page.reload()
+      await expect(page.getByTestId('line-chart-label')).toHaveCount(13)
+
+      for (const width of [390, 768, 1024, 1280, 1920]) {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5' })
+        const alignment = await page.getByTestId('temperature-trend-card').evaluate((card) => {
+          const markers = [...card.querySelectorAll('[data-testid="line-chart-marker"]')]
+          const labels = [...card.querySelectorAll('[data-testid="line-chart-label"]')]
+          return markers.map((marker, index) => {
+            const dot = marker.getBoundingClientRect()
+            const label = labels[index]!.getBoundingClientRect()
+            return Math.abs(dot.x + dot.width / 2 - label.x - label.width / 2)
+          })
+        })
+        expect(Math.max(...alignment)).toBeLessThan(1)
+
+        for (const [cardId, labelId, scrollId] of [
+          ['temperature-trend-card', 'line-chart-label', 'line-chart-scroll'],
+          ['precipitation-outlook-card', 'bar-chart-label', 'bar-chart-scroll']
+        ]) {
+          const card = page.getByTestId(cardId!)
+          const textBounds = await card.getByTestId(labelId!).evaluateAll(elements => elements.map((element) => {
+            const range = document.createRange()
+            range.selectNodeContents(element)
+            const rect = range.getBoundingClientRect()
+            return { left: rect.left, right: rect.right, height: rect.height }
+          }))
+          expect(textBounds).toHaveLength(13)
+          for (let index = 1; index < textBounds.length; index++) {
+            expect(textBounds[index]!.left - textBounds[index - 1]!.right).toBeGreaterThan(2)
+          }
+          const scroll = card.getByTestId(scrollId!)
+          await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth })
+          const lastVisible = await scroll.evaluate((element) => {
+            const label = element.querySelectorAll('[data-testid$="chart-label"]')
+            const last = label[label.length - 1]!.getBoundingClientRect()
+            const area = element.getBoundingClientRect()
+            return last.right <= area.right + 1 && last.left >= area.left - 1 && last.bottom <= area.bottom
+          })
+          expect(lastVisible).toBe(true)
+        }
+      }
+    }
+  })
+
+  test('keeps all hourly points reachable on narrow screens without page overflow', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 0) > 700)
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const card = page.getByTestId('hourly-forecast-card')
+    await expect(card.getByTestId('hourly-forecast-item')).toHaveCount(13)
+    const scrollArea = card.locator('[data-slot="body"]')
+    const initial = await scrollArea.evaluate(element => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth
+    }))
+    expect(initial.scrollWidth).toBeGreaterThan(initial.clientWidth)
+
+    await scrollArea.evaluate(element => { element.scrollLeft = element.scrollWidth })
+    const lastItemVisible = await scrollArea.evaluate((element) => {
+      const lastItem = element.querySelector('[data-testid="hourly-forecast-item"]:last-child')
+      if (!lastItem) return false
+      const area = element.getBoundingClientRect()
+      const item = lastItem.getBoundingClientRect()
+      return item.right <= area.right + 1 && item.left >= area.left - 1
+    })
+    expect(lastItemVisible).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual((page.viewportSize()?.width ?? 0) + 2)
+  })
+
+  test('distributes content across the daily forecast, clothing, and conditions cards', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop-chrome')
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+    await page.goto('/', { waitUntil: 'networkidle' })
+
+    const dailyRows = await page.getByTestId('daily-forecast-table').getByRole('row').filter({
+      has: page.getByRole('cell')
+    }).evaluateAll((elements) =>
+      elements.map(element => element.getBoundingClientRect().height)
+    )
+    expect(dailyRows).toHaveLength(7)
+    expect(Math.max(...dailyRows) - Math.min(...dailyRows)).toBeLessThan(2)
+
+    const conditionRows = await page.getByTestId('weather-details-card').getByTestId('weather-detail-row').evaluateAll((elements) =>
+      elements.map(element => element.getBoundingClientRect().height)
+    )
+    expect(conditionRows).toHaveLength(6)
+    expect(Math.max(...conditionRows) - Math.min(...conditionRows)).toBeLessThan(2)
+
+    const clothingSummary = await page.getByTestId('clothing-summary').boundingBox()
+    const clothingPieces = await page.getByTestId('clothing-pieces').boundingBox()
+    expect(clothingSummary).not.toBeNull()
+    expect(clothingPieces).not.toBeNull()
+    expect(clothingPieces!.y - (clothingSummary!.y + clothingSummary!.height)).toBeGreaterThan(24)
+  })
+
   test('renders every dashboard card with real height and no horizontal overflow', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
 
