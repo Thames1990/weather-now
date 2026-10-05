@@ -11,6 +11,10 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 - Switch locales and adjust clothing recommendations
 - Responsive, accessible UI built with Nuxt and Nuxt UI
 
+The selected language persists across reloads and new tabs, including on GitHub
+Pages. On the first visit, the app follows the browser language; a saved choice
+takes precedence on subsequent visits.
+
 ## Stack
 
 - Nuxt 4
@@ -76,4 +80,12 @@ To reproduce the GitHub Pages static production build:
 
 ```bash
 NUXT_APP_BASE_URL=/weather-now/ NUXT_PUBLIC_API_MODE=external pnpm generate
+```
+
+To run browser tests against a served production build instead of the development
+server, set `PLAYWRIGHT_BASE_URL` to its URL, including the trailing slash and
+repository subpath when applicable:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:3000/weather-now/ pnpm test:e2e tests/e2e/language-persistence.spec.ts
 ```
