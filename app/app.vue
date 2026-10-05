@@ -33,6 +33,11 @@ const languageOptions = [
 ]
 
 const colorMode = useColorMode()
+const themeOptions = computed(() => [
+  { label: t('systemTheme'), value: 'system', icon: 'i-lucide-monitor' },
+  { label: t('lightTheme'), value: 'light', icon: 'i-lucide-sun' },
+  { label: t('darkTheme'), value: 'dark', icon: 'i-lucide-moon' }
+])
 const isReady = useAppReady()
 const isDashboardVisible = ref(false)
 const showStartupLoader = useDelayedFlag(() => isReady.value && !isDashboardVisible.value, 600)
@@ -54,15 +59,7 @@ onBeforeUnmount(() => { isUnmounted = true })
 const isRefreshing = useDelayedFlag(() => isLoading.value && Boolean(current.value))
 // theme classes use `dark:` variants so the prerendered page already matches the color-mode class set before paint
 const panelThemeClass = 'border border-slate-200/80 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:shadow-[0_10px_30px_rgba(2,6,23,0.38)]'
-function toggleColorMode() {
-  colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
-}
-const themeAction = computed(() => t(colorMode.value === 'dark' ? 'switchToLight' : 'switchToDark'))
 const headerIconButtonClass = 'min-h-[48px] min-w-[48px] justify-center'
-
-onMounted(() => {
-  if (!colorMode.value) colorMode.preference = 'dark'
-})
 
 const {
   favorites, isFavorite, addFavorite, saveFavorites, displayLocation,
@@ -137,10 +134,8 @@ watch(savedLanguage, (value) => {
                 <div class="hidden items-center gap-2 lg:flex">
                   <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-24" :ui="{ base: 'min-h-[48px]' }" :aria-label="$t('language')" />
                   <USkeleton v-else class="h-[48px] w-24 rounded-md" />
-                  <UButton color="neutral" variant="ghost" square :class="headerIconButtonClass" :aria-label="themeAction" @click="toggleColorMode">
-                    <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
-                    <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
-                  </UButton>
+                  <ThemeSelector v-if="isReady" v-model="colorMode.preference" class="w-60" :options="themeOptions" :label="$t('theme')" />
+                  <USkeleton v-else class="h-[50px] w-60 rounded-lg" />
                 </div>
 
                 <UPopover class="lg:hidden" :content="{ side: 'bottom', align: 'end' }">
@@ -149,11 +144,8 @@ watch(savedLanguage, (value) => {
                     <div class="grid min-w-52 gap-3 p-3">
                       <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" class="w-full" :ui="{ base: 'min-h-[48px]' }" :aria-label="$t('language')" />
                       <USkeleton v-else class="h-[48px] w-full rounded-md" />
-                      <UButton color="neutral" variant="ghost" class="min-h-[48px] justify-start" :aria-label="themeAction" @click="toggleColorMode">
-                        <UIcon name="i-lucide-moon" class="size-5 dark:hidden" />
-                        <UIcon name="i-lucide-sun" class="hidden size-5 dark:block" />
-                        {{ themeAction }}
-                      </UButton>
+                      <ThemeSelector v-if="isReady" v-model="colorMode.preference" :options="themeOptions" :label="$t('theme')" />
+                      <USkeleton v-else class="h-12 w-full rounded-md" />
                     </div>
                   </template>
                 </UPopover>

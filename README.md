@@ -8,7 +8,7 @@ A polished Nuxt weather app for live conditions, hourly and 7-day forecasts, loc
 - View current weather conditions and detailed metrics
 - Explore hourly and 7-day forecasts
 - Save favorite locations with city and region names in every selectable language
-- Switch locales and adjust clothing recommendations
+- Switch locales, choose system/light/dark appearance, and adjust clothing recommendations
 - Responsive, accessible UI built with Nuxt and Nuxt UI
 
 The selected language persists across reloads and new tabs, including on GitHub
@@ -39,8 +39,10 @@ and opens only favorites management. On phones and portrait tablets, open **Sear
 cities** to access the same features. Search results appear in a separate section
 above the favorites controls and saved cities in the mobile picker. Selecting a
 city clears the search. Closing the mobile picker or pressing Escape in desktop
-search also clears it; leaving the desktop input preserves the query. On phones and portrait tablets, language and
-theme controls are available under **Settings**.
+search also clears it; leaving the desktop input preserves the query. On phones
+and portrait tablets, language and theme controls are available under
+**Settings**. Choose **System** to follow your device's light or dark appearance,
+or select **Light** or **Dark** to set it manually.
 
 Favorites automatically follow the selected language, including cities saved
 before multilingual favorites were introduced. Names are stored on your device

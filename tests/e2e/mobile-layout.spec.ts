@@ -275,17 +275,20 @@ test.describe('responsive dashboard layout', () => {
         await settings.focus()
         await settings.press('Enter')
         const language = page.getByRole('combobox', { name: 'Language' }).filter({ visible: true })
-        const theme = page.getByRole('button', { name: /Use (light|dark) mode/ })
+        const theme = page.getByRole('group', { name: 'Theme' }).filter({ visible: true })
         await expect(language).toBeVisible()
         await expect(theme).toBeVisible()
+        if (width === 360) {
+          await expect(theme.getByRole('radio', { name: 'System' })).toBeChecked()
+        }
         controls.push(language, theme)
       } else {
         await expect(navbar.getByLabel('Language')).toBeVisible()
-        await expect(navbar.getByRole('button', { name: /Use (light|dark) mode/ })).toBeVisible()
+        await expect(navbar.getByRole('group', { name: 'Theme' })).toBeVisible()
         await expect(navbar.getByLabel('Settings')).toBeHidden()
         const savedCities = navbar.getByRole('button', { name: 'Saved cities', exact: true })
         await expect(savedCities).toBeVisible()
-        controls.push(savedCities, navbar.getByLabel('Language'), navbar.getByRole('button', { name: /Use (light|dark) mode/ }))
+        controls.push(savedCities, navbar.getByLabel('Language'), navbar.getByRole('group', { name: 'Theme' }))
       }
 
       for (const control of controls) {
@@ -301,7 +304,7 @@ test.describe('responsive dashboard layout', () => {
 
       const iconControls = width < 1024
         ? [location, navbar.getByLabel('Settings')]
-        : [location, navbar.getByRole('button', { name: /Use (light|dark) mode/ })]
+        : [location]
       for (const control of iconControls) {
         const offset = await control.evaluate((button) => {
           const icon = [...button.querySelectorAll('span')].find(element => element.getBoundingClientRect().width > 0)
@@ -349,19 +352,27 @@ test.describe('responsive dashboard layout', () => {
     }
 
     await page.setViewportSize({ width: 390, height: 844 })
-    await navbar.getByLabel('Settings').click()
+    await navbar.getByLabel(/^(Settings|Einstellungen)$/).click()
     const language = page.getByRole('combobox', { name: 'Language' }).filter({ visible: true })
     await language.click()
     await page.getByRole('option', { name: 'DE' }).click()
     await expect(navbar.getByRole('button', { name: 'Suche und gespeicherte Orte' })).toBeVisible()
 
-    const theme = page.getByRole('button', { name: /(Hell|Dunkel)modus verwenden/ })
-    const wasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
-    await theme.click()
-    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(!wasDark)
-    await expect(theme).toHaveText(wasDark ? 'Dunkelmodus verwenden' : 'Hellmodus verwenden')
+    const theme = page.getByRole('group', { name: 'Darstellung' }).filter({ visible: true })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await theme.getByText('Dunkel', { exact: true }).click()
+    await expect(theme.getByRole('radio', { name: 'Dunkel', exact: true })).toBeChecked()
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true)
+    await theme.getByText('System', { exact: true }).click()
+    await expect(theme.getByRole('radio', { name: 'System', exact: true })).toBeChecked()
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true)
+    await page.emulateMedia({ colorScheme: 'light' })
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false)
     await page.reload({ waitUntil: 'networkidle' })
     await expect(navbar.getByRole('button', { name: 'Suche und gespeicherte Orte' })).toBeVisible()
+    await navbar.getByLabel(/^(Settings|Einstellungen)$/).click()
+    await expect(page.getByRole('group', { name: 'Darstellung' }).getByRole('radio', { name: 'System', exact: true })).toBeChecked()
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false)
   })
 
   test('scrolls the dashboard on small viewports and fits without scrolling on desktop', async ({ page }) => {
