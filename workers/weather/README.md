@@ -3,12 +3,14 @@
 Separate Cloudflare Worker for the existing **api** service at
 **https://api.mohrworks.com**. The Pages frontend, Nuxt server routes, and
 `NUXT_PUBLIC_API_MODE=external` remain unchanged. The backend is active in
-production as version `eb40b221-ad8a-432d-b46f-ff6c4e746d7a` (October 6, 2026).
-Deployment status confirms 100% traffic, and the existing custom domain remains
-attached to `api` in the production environment. Health, Berlin forecast/search,
-invalid coordinates, and allowed-origin CORS passed production smoke checks.
-The original Hello World rollback version is
-`a53035d0-f185-4dc2-b752-048fe5ba98a5`.
+production as version `06493413-ffbe-42df-bf51-4a75cde59ffd` (October 6, 2026),
+which adds localized/ID location lookups and `/ip-location`. Deployment status
+confirms 100% traffic, and the existing custom domain remains attached to `api`
+in the production environment. Health, Berlin forecast, default and German
+search, ID lookup (known and unknown), IP location, invalid input, and allowed
+and denied CORS origins passed production smoke checks. Its rollback version
+is the first backend release, `eb40b221-ad8a-432d-b46f-ff6c4e746d7a`; the
+original Hello World version is `a53035d0-f185-4dc2-b752-048fe5ba98a5`.
 
 The first attempt (`c231d12f-7d85-47a8-83c3-4447c67829a8`) was immediately
 rolled back after health still returned Hello World. An authorized retry
