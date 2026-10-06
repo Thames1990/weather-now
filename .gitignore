@@ -28,3 +28,8 @@ test-results
 playwright-report
 blob-report
 playwright/.cache
+
+# Cloudflare local state and secrets
+.wrangler
+.dev.vars
+.dev.vars.*
