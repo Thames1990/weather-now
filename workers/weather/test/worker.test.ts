@@ -86,6 +86,77 @@ describe('Worker contract', () => {
     })
   })
 
+  it.each([
+    ['', { count: '5', language: 'en' }],
+    ['&language=de', { count: '5', language: 'de' }],
+    ['&language=en&count=100', { count: '100', language: 'en' }],
+    ['&count=1', { count: '1', language: 'en' }]
+  ])('serializes optional search parameters %s', async (suffix, expected) => {
+    fetchMock.mockResolvedValue(Response.json({ results: [place] }))
+    expect((await handleRequest(request(`/locations?q=Berlin${suffix}`), env)).status).toBe(200)
+    const upstream = new URL(String(fetchMock.mock.calls[0]![0]))
+    expect(Object.fromEntries(upstream.searchParams)).toEqual({ name: 'Berlin', format: 'json', ...expected })
+  })
+
+  it('bounds search results by the requested count', async () => {
+    fetchMock.mockResolvedValue(Response.json({ results: Array.from({ length: 100 }, () => place) }))
+    const response = await handleRequest(request('/locations?q=Berlin&count=100'), env)
+    expect(response.status).toBe(200)
+    expect((await response.json() as { results: unknown[] }).results).toHaveLength(100)
+    fetchMock.mockResolvedValue(Response.json({ results: [place, place] }))
+    expect((await handleRequest(request('/locations?q=Berlin&count=1'), env)).status).toBe(502)
+  })
+
+  it.each([
+    ['/locations/2950159', 'en'],
+    ['/locations/2950159?language=de', 'de']
+  ])('looks up %s by ID and wraps it in the search contract', async (path, expectedLanguage) => {
+    fetchMock.mockResolvedValue(Response.json({
+      ...place, country: 'Deutschland', admin1: 'Land Berlin', elevation: 74, postcodes: ['10967'], feature_code: 'PPLC'
+    }))
+    const response = await handleRequest(request(path), env)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ results: [{ ...place, country: 'Deutschland', admin1: 'Land Berlin' }] })
+    const upstream = new URL(String(fetchMock.mock.calls[0]![0]))
+    expect(upstream.origin + upstream.pathname).toBe('https://geocoding-api.open-meteo.com/v1/get')
+    expect(Object.fromEntries(upstream.searchParams)).toEqual({ id: '2950159', language: expectedLanguage, format: 'json' })
+    expect(clientLimit).toHaveBeenCalledTimes(1)
+    expect(upstreamLimit).toHaveBeenCalledTimes(1)
+  })
+
+  it('maps the provider unknown-ID response to 404', async () => {
+    fetchMock.mockResolvedValue(Response.json({ reason: 'Location ID not found.', error: true }, { status: 400 }))
+    const response = await handleRequest(request('/locations/999999999'), env)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ error: { code: 'location_not_found' } })
+    expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['other provider 400 reason', () => Response.json({ reason: 'Parameter id is invalid', error: true }, { status: 400 })],
+    ['non-JSON provider 400', () => new Response('Location ID not found.', { status: 400 })],
+    ['provider 404', () => Response.json({ reason: 'Location ID not found.', error: true }, { status: 404 })]
+  ])('maps %s on ID lookup to 502', async (_, responseFactory) => {
+    fetchMock.mockResolvedValue(responseFactory())
+    const response = await handleRequest(request('/locations/2950159'), env)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ error: { code: 'upstream_status' } })
+  })
+
+  it.each([
+    ['mismatched ID', { ...place, id: 1 }],
+    ['missing ID', { name: 'Berlin', latitude: 52.52, longitude: 13.41, timezone: 'Europe/Berlin' }],
+    ['search envelope', { results: [place] }],
+    ['array', [place]],
+    ['invalid location', { ...place, latitude: 100 }],
+    ['provider error object', { error: true, reason: 'Location ID not found.' }]
+  ])('rejects ID lookup payload with %s', async (_, payload) => {
+    fetchMock.mockResolvedValue(Response.json(payload))
+    const response = await handleRequest(request('/locations/2950159'), env)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ error: { code: 'upstream_invalid' } })
+  })
+
   it.each(['ab', 'a'.repeat(100)])('accepts search length boundary %s', async (query) => {
     fetchMock.mockResolvedValue(Response.json({}))
     expect((await handleRequest(request(`/locations?q=${query}`), env)).status).toBe(200)
@@ -99,7 +170,14 @@ describe('Worker contract', () => {
     '/weather?latitude=0&longitude=0&url=https://evil.example',
     '/locations', '/locations?q=', '/locations?q=A', '/locations?q=%00Berlin',
     `/locations?q=${'a'.repeat(101)}`, '/locations?q=Berlin&q=Paris',
-    '/locations?q=Berlin&count=100', '/health?unknown=1'
+    '/locations?q=Berlin&count=0', '/locations?q=Berlin&count=101', '/locations?q=Berlin&count=05',
+    '/locations?q=Berlin&count=1.5', '/locations?q=Berlin&count=', '/locations?q=Berlin&count=5&count=6',
+    '/locations?q=Berlin&language=fr', '/locations?q=Berlin&language=EN', '/locations?q=Berlin&language=',
+    '/locations?q=Berlin&language=en&language=de', '/locations?q=Berlin&lang=de',
+    '/locations/0', '/locations/-1', '/locations/1.5', '/locations/abc', '/locations/1e3', '/locations/0x10',
+    '/locations/01', '/locations/9007199254740992', '/locations/12345678901234567', '/locations/%31',
+    '/locations/2950159?language=fr', '/locations/2950159?id=1', '/locations/2950159?language=de&language=en',
+    '/ip-location?ip=192.0.2.1', '/health?unknown=1'
   ])('rejects invalid query %s without upstream work', async (path) => {
     const response = await handleRequest(request(path), env)
     expect(response.status).toBe(400)
@@ -113,11 +191,15 @@ describe('Worker contract', () => {
   })
 
   it('rejects unknown paths and unsupported methods', async () => {
-    expect((await handleRequest(request('/unknown'), env)).status).toBe(404)
-    for (const method of ['POST', 'PUT', 'DELETE', 'HEAD']) {
-      const response = await handleRequest(request('/weather', { method }), env)
-      expect(response.status).toBe(405)
-      expect(response.headers.get('Allow')).toBe('GET, OPTIONS')
+    for (const path of ['/unknown', '/locations/', '/locations/1/extra', '/reverse-geocode', '/ip-location/']) {
+      expect((await handleRequest(request(path), env)).status).toBe(404)
+    }
+    for (const path of ['/weather', '/locations/2950159', '/ip-location']) {
+      for (const method of ['POST', 'PUT', 'DELETE', 'HEAD']) {
+        const response = await handleRequest(request(path, { method }), env)
+        expect(response.status).toBe(405)
+        expect(response.headers.get('Allow')).toBe('GET, OPTIONS')
+      }
     }
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -198,10 +280,69 @@ describe('Provider failures and deadlines', () => {
   })
 })
 
+const withCf = (path: string, cf: unknown, init?: RequestInit) => {
+  const incoming = request(path, init)
+  Object.defineProperty(incoming, 'cf', { value: cf })
+  return incoming
+}
+const berlinCf = { city: 'Berlin', region: 'Land Berlin', country: 'DE', latitude: '52.52437', longitude: '13.41053', asn: 64496 }
+
+describe('IP location', () => {
+  it('maps Cloudflare edge geolocation to the app IP location contract without upstream calls', async () => {
+    const response = await handleRequest(withCf('/ip-location', berlinCf, { headers: { 'CF-Connecting-IP': '192.0.2.1' } }), env)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    expect(await response.json()).toEqual({ name: 'Berlin', region: 'Land Berlin', country: 'DE', latitude: 52.52437, longitude: 13.41053 })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(clientLimit).toHaveBeenCalledWith({ key: '192.0.2.1' })
+    expect(upstreamLimit).not.toHaveBeenCalled()
+  })
+
+  it('returns empty labels when only coordinates are known', async () => {
+    const response = await handleRequest(withCf('/ip-location', { latitude: '-33.9', longitude: '151.2', city: ' ' }), env)
+    expect(await response.json()).toEqual({ name: '', country: '', latitude: -33.9, longitude: 151.2 })
+  })
+
+  it.each([
+    ['no cf object', undefined],
+    ['missing coordinates', { city: 'Berlin', country: 'DE' }],
+    ['missing longitude', { latitude: '52.5' }],
+    ['numeric coordinates', { latitude: 52.5, longitude: 13.4 }],
+    ['out-of-range coordinates', { latitude: '91', longitude: '0' }],
+    ['non-decimal coordinates', { latitude: 'NaN', longitude: '1e2' }]
+  ])('fails safely with %s and never logs location data', async (_, cf) => {
+    const response = await handleRequest(withCf('/ip-location', cf, { headers: { 'CF-Connecting-IP': '192.0.2.1' } }), env)
+    expect(response.status).toBe(503)
+    const body = await response.text()
+    expect(JSON.parse(body)).toMatchObject({ error: { code: 'ip_location_unavailable' } })
+    expect(body).not.toMatch(/192\.0\.2\.1|Berlin|52\.5/)
+    expect(console.error).toHaveBeenCalledWith(JSON.stringify({ event: 'request_failed', code: 'ip_location_unavailable', status: 503 }))
+  })
+
+  it('is rate limited and fails closed per client', async () => {
+    clientLimit.mockResolvedValue({ success: false })
+    expect((await handleRequest(withCf('/ip-location', berlinCf), env)).status).toBe(429)
+    clientLimit.mockRejectedValue(new Error('private binding detail'))
+    expect((await handleRequest(withCf('/ip-location', berlinCf), env)).status).toBe(503)
+  })
+
+  it('allows only the production browser origin', async () => {
+    const allowed = await handleRequest(withCf('/ip-location', berlinCf, { headers: { Origin: 'https://weather.mohrworks.com' } }), env)
+    expect(allowed.status).toBe(200)
+    expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe('https://weather.mohrworks.com')
+    const denied = await handleRequest(withCf('/ip-location', berlinCf, { headers: { Origin: 'https://evil.example' } }), env)
+    expect(denied.status).toBe(403)
+    expect(clientLimit).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('Abuse protection and CORS', () => {
-  it.each(['client', 'aggregate'])('rejects exhausted %s limiter before upstream fetch', async (limiter) => {
+  it.each([
+    ['client', '/locations?q=Berlin'], ['aggregate', '/locations?q=Berlin'],
+    ['client', '/locations/2950159?language=de'], ['aggregate', '/locations/2950159?language=de']
+  ])('rejects exhausted %s limiter before upstream fetch for %s', async (limiter, path) => {
     (limiter === 'client' ? clientLimit : upstreamLimit).mockResolvedValue({ success: false })
-    const response = await handleRequest(request('/locations?q=Berlin'), env)
+    const response = await handleRequest(request(path), env)
     expect(response.status).toBe(429)
     expect(await response.json()).toMatchObject({ error: { code: 'rate_limited' } })
     expect(fetchMock).not.toHaveBeenCalled()
@@ -236,9 +377,11 @@ describe('Abuse protection and CORS', () => {
     expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe('https://weather.mohrworks.com')
     expect(allowed.headers.has('Access-Control-Allow-Credentials')).toBe(false)
     for (const origin of ['https://evil.example', 'null', 'http://localhost:3000']) {
-      const response = await handleRequest(request('/locations?q=Berlin', { headers: { Origin: origin } }), env)
-      expect(response.status).toBe(403)
-      expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false)
+      for (const path of ['/locations?q=Berlin', '/locations/2950159?language=de']) {
+        const response = await handleRequest(request(path, { headers: { Origin: origin } }), env)
+        expect(response.status).toBe(403)
+        expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false)
+      }
     }
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -248,6 +391,9 @@ describe('Abuse protection and CORS', () => {
     const response = await handleRequest(request('/weather', { method: 'OPTIONS', headers }), env)
     expect(response.status).toBe(204)
     expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET')
+    for (const path of ['/locations/2950159', '/ip-location']) {
+      expect((await handleRequest(request(path, { method: 'OPTIONS', headers }), env)).status).toBe(204)
+    }
     expect((await handleRequest(request('/weather', { method: 'OPTIONS', headers: { ...headers, 'Access-Control-Request-Method': 'POST' } }), env)).status).toBe(403)
     expect((await handleRequest(request('/weather', { method: 'OPTIONS', headers: { ...headers, 'Access-Control-Request-Headers': 'Authorization' } }), env)).status).toBe(403)
     expect(clientLimit).not.toHaveBeenCalled()
