@@ -27,6 +27,7 @@
   "undo": "Undo",
   "loadingFavoriteNames": "Loading city names in all languages…",
   "errorFavoriteLocalization": "Some saved city names couldn't be loaded just now. Your favorites are safe—try again in a moment.",
+  "errorFavoriteLocationNotFound": "A saved city could not be matched anymore. Your favorite is safe—remove it and search for the city again.",
   "nowIn": "Current conditions",
   "yourCoordinates": "Current position",
   "forecastUnavailable": "Forecast unavailable",

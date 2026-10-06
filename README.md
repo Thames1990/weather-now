@@ -35,7 +35,7 @@ the existing error message and retry action.
 - Vue 3
 - TypeScript
 - Nuxt UI
-- Open-Meteo and geocoding APIs via Nitro server routes
+- Open-Meteo weather and geocoding services via the selected API mode
 
 ## Favorites
 
@@ -54,7 +54,7 @@ Favorites automatically follow the selected language, including cities saved
 before multilingual favorites were introduced. Names are stored on your device
 for offline language switching. Existing favorites are updated when the app
 opens; if a lookup fails, the original city is kept and the favorites menu offers
-a retry.
+a retry. Stored labels and favorite data are preserved when a lookup fails.
 
 ## Local development
 
@@ -85,23 +85,39 @@ and city search go through the [weather Worker](workers/weather/README.md).
 
 `NUXT_PUBLIC_API_MODE` is read at build time:
 
-| Mode | Forecast and search | Used by |
+| Mode | Forecast and location services | Used by |
 | --- | --- | --- |
-| `server` (default) | Nuxt server routes under `/api` | `pnpm dev`, `pnpm build` |
-| `external` | Open-Meteo directly from the browser | Static fallback |
-| `worker` | `NUXT_PUBLIC_API_BASE_URL` (`/weather`, `/locations`) | GitHub Pages |
+| `server` (default) | Nuxt server routes under `/api`; provider calls stay server-side and do not depend on Cloudflare | `pnpm dev`, `pnpm build` |
+| `external` | Forecasts and location search call Open-Meteo from the browser; IP and reverse geocoding use their existing direct-provider paths | Static fallback |
+| `worker` | `NUXT_PUBLIC_API_BASE_URL` (`/weather`, `/locations`, `/locations/{id}`, `/ip-location`) | GitHub Pages |
 
 `worker` mode requires `NUXT_PUBLIC_API_BASE_URL` to be an absolute http(s) URL
 without query or fragment; the build fails otherwise. Unknown modes also fail.
-The Worker does not cover reverse geocoding, IP location, or localized favorite
-labels, so outside `server` mode those still call Open-Meteo, BigDataCloud, and
-ipinfo directly. Worker search results are English only.
+
+In `worker` mode, forecasts, location search, favorite-name localization, and IP
+location use the Worker. Search uses
+`GET /locations?q=<name>&language=en|de&count=1..100` (default language `en`,
+count `5`); favorite lookups use
+`GET /locations/{id}?language=en|de`. Both location responses use the
+`{ results: [...] }` shape. Unknown saved IDs are reported as not found, and
+failed lookups keep the saved favorite and its labels intact.
+
+The only direct provider request in production Worker mode is BigDataCloud
+reverse geocoding for the current device position. It runs in the browser
+because the free endpoint rejects server-side requests. Favorites do not call
+BigDataCloud in Worker mode: legacy entries without an ID are matched using
+their saved name, country, administrative area, and coordinates against
+Open-Meteo search results. Ambiguous or unmatched entries remain usable as
+saved and show a recoverable localization error. Worker mode does not call
+`api.open-meteo.com`, `geocoding-api.open-meteo.com`, or `ipinfo.io` from the
+browser.
 
 Worker requests are never retried automatically. A `429` shows a rate-limit
-message and pauses further Worker requests for the `Retry-After` delay, or 60
-seconds if the browser cannot read it (the Worker does not currently expose that
-header via CORS). A `503` shows a temporary-unavailability message; network and
-other errors keep the existing forecast/search error messages.
+message and pauses further Worker API requests for the
+`Retry-After` delay, or 60 seconds if the browser cannot read it (the Worker
+does not currently expose that header via CORS). A `503` shows a
+temporary-unavailability message; other errors keep the relevant forecast,
+search, or favorite-localization message.
 
 In the repository settings, set **Pages → Source** to **GitHub Actions** once
 before the first deployment, then set **Pages → Custom domain** to

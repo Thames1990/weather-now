@@ -8,6 +8,7 @@ const cologne: LocationResult = {
   latitude: 50.93333, longitude: 6.95, timezone: 'Europe/Berlin'
 }
 const koeln: LocationResult = { ...cologne, name: 'Köln', country: 'Deutschland', admin1: 'Nordrhein-Westfalen' }
+const workerBaseUrl = 'https://api.example.test'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -20,9 +21,10 @@ async function setup(mode = 'server', saved: FavoriteLocation[] = [], fetch = vi
   const mounted: (() => void)[] = []
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('computed', computed)
+  vi.stubGlobal('useState', (_key: string, initial: () => unknown) => ref(initial()))
   vi.stubGlobal('usePersistentState', () => storage)
   vi.stubGlobal('useI18n', () => ({ locale, locales: ref([{ code: 'en' }, { code: 'de' }]) }))
-  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode: mode } }))
+  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode: mode, apiBaseUrl: workerBaseUrl } }))
   vi.stubGlobal('onMounted', (callback: () => void) => mounted.push(callback))
   vi.stubGlobal('onBeforeUnmount', vi.fn())
   vi.stubGlobal('$fetch', fetch)
@@ -34,7 +36,7 @@ async function setup(mode = 'server', saved: FavoriteLocation[] = [], fetch = vi
 function localizedFetch(mode: string) {
   return vi.fn(async (_url: string, options: { query: { language: string } }) => {
     const location = options.query.language === 'de' ? koeln : cologne
-    return mode === 'server' ? { results: [location] } : location
+    return mode === 'external' ? location : { results: [location] }
   })
 }
 
@@ -59,8 +61,15 @@ describe('multilingual favorites', () => {
     locale.value = 'en'
     expect(state.favorites.value[0]?.name).toBe('Cologne')
     expect(fetch).toHaveBeenCalledTimes(2)
-    expect(fetch).toHaveBeenCalledWith(mode === 'server' ? '/api/geocode' : 'https://geocoding-api.open-meteo.com/v1/get',
-      expect.objectContaining({ query: expect.objectContaining({ id: 2886242, language: 'de' }) }))
+    if (mode === 'worker') {
+      expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations/2886242`, {
+        query: { language: 'de' }, retry: false, timeout: 15_000
+      })
+      expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('bigdatacloud'), expect.anything())
+    } else {
+      expect(fetch).toHaveBeenCalledWith(mode === 'server' ? '/api/geocode' : 'https://geocoding-api.open-meteo.com/v1/get',
+        expect.objectContaining({ query: expect.objectContaining({ id: 2886242, language: 'de' }) }))
+    }
   })
 
   it('also saves English names when added in German', async () => {
@@ -73,13 +82,14 @@ describe('multilingual favorites', () => {
     expect(state.favorites.value[0]?.name).toBe('Cologne')
   })
 
-  it('localizes a current-location favorite whose precise coordinates differ from the city geocoding point', async () => {
+  it.each(['server', 'worker'])('localizes a current-location favorite whose precise coordinates differ from the city geocoding point in %s mode', async (mode) => {
     const currentLocation: LocationResult = {
       ...cologne,
+      id: undefined,
       latitude: 50.94,
       longitude: 6.96
     }
-    const { state, storage } = await setup('server', [], localizedFetch('server'))
+    const { state, storage, fetch } = await setup(mode, [], localizedFetch(mode))
 
     state.addFavorite(currentLocation)
     await vi.waitFor(() => expect(state.isLocalizing.value).toBe(false))
@@ -94,6 +104,12 @@ describe('multilingual favorites', () => {
         de: { name: 'Köln' }
       }
     })
+    if (mode === 'worker') {
+      expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, {
+        query: { q: 'Cologne', language: 'en', count: '100' }, retry: false, timeout: 15_000
+      })
+      expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('bigdatacloud'), expect.anything())
+    }
   })
 
   it('migrates legacy favorites by coordinates, not the first search result', async () => {
@@ -153,7 +169,7 @@ describe('multilingual favorites', () => {
     expect(storage.value[0]?.labels).toBeUndefined()
   })
 
-  it.each(['server', 'external', 'worker'])('localizes coordinate-based favorites with reverse geocoding in %s mode', async (mode) => {
+  it.each(['server', 'external'])('preserves direct reverse-geocoding localization for coordinate-based favorites in %s mode', async (mode) => {
     const fetch = vi.fn(async (url: string, options: { query: { language?: string; localityLanguage?: string } }) => {
       if (url.includes('geocode') && !url.includes('reverse-geocode')) return { results: [] }
       if (url.includes('/v1/search')) return { results: [] }
@@ -164,6 +180,55 @@ describe('multilingual favorites', () => {
     await state.retryLocalization()
     expect(storage.value[0]?.labels?.de?.name).toBe('Köln')
     expect(storage.value[0]?.labels?.en?.name).toBe('Cologne')
+  })
+
+  it('preserves an unmatched legacy Worker favorite and reports a recoverable not-found error', async () => {
+    const legacy: FavoriteLocation = { ...cologne, id: undefined, name: 'Old user label' }
+    const fetch = vi.fn().mockResolvedValue({ results: [] })
+    const { state, storage } = await setup('worker', [legacy], fetch)
+
+    await state.retryLocalization()
+
+    expect(state.errorMessage.value).toBe('errorFavoriteLocationNotFound')
+    expect(storage.value).toEqual([legacy])
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, {
+      query: { q: 'Old user label', language: 'en', count: '100' }, retry: false, timeout: 15_000
+    })
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('bigdatacloud'))).toBe(false)
+  })
+
+  it('preserves Worker favorites and suppresses retries during a shared 429 cooldown', async () => {
+    const rateLimit = Object.assign(new Error('HTTP 429'), {
+      status: 429,
+      response: { status: 429, headers: new Headers({ 'Retry-After': '60' }) }
+    })
+    const saved: FavoriteLocation = { ...cologne, labels: { en: { name: 'Saved Cologne', country: 'Germany' } } }
+    const fetch = vi.fn().mockRejectedValue(rateLimit)
+    const { state, storage } = await setup('worker', [saved], fetch)
+
+    await state.retryLocalization()
+    await state.retryLocalization()
+
+    expect(state.errorMessage.value).toBe('errorRateLimited')
+    expect(storage.value).toEqual([saved])
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations/2886242`, {
+      query: { language: 'de' }, retry: false, timeout: 15_000
+    })
+  })
+
+  it('localizes a missing Worker location ID without replacing the favorite', async () => {
+    const notFound = Object.assign(new Error('HTTP 404'), { status: 404 })
+    const fetch = vi.fn().mockRejectedValue(notFound)
+    const saved: FavoriteLocation = { ...cologne, labels: { en: { name: 'Saved Cologne', country: 'Germany' } } }
+    const { state, storage } = await setup('worker', [saved], fetch)
+
+    await state.retryLocalization()
+
+    expect(state.errorMessage.value).toBe('errorFavoriteLocationNotFound')
+    expect(storage.value).toEqual([saved])
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('distinguishes namesakes and uses coordinates for old favorites', () => {
