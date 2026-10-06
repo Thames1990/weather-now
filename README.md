@@ -76,13 +76,15 @@ pnpm preview
 
 Pull requests targeting `main`, pushes to `main`, and manual workflow runs
 check lint, unit tests, and a static production build. Pushes and manual runs
-deploy to https://thames1990.github.io/weather-now/ only after all checks pass;
-pull requests never deploy. The workflow uses the repository
-subpath and calls the public Open-Meteo, BigDataCloud, and ipinfo APIs directly,
-so the existing site at https://thames1990.github.io/ is not replaced.
+deploy to https://weather.mohrworks.com/ only after all checks pass;
+pull requests never deploy. The workflow builds for the site root and calls the
+public Open-Meteo, BigDataCloud, and ipinfo APIs directly.
 
 In the repository settings, set **Pages → Source** to **GitHub Actions** once
-before the first deployment.
+before the first deployment, then set **Pages → Custom domain** to
+`weather.mohrworks.com` and enforce HTTPS. In DNS, create a DNS-only `CNAME`
+record `weather` pointing to `thames1990.github.io`. No `CNAME` file is needed
+for Actions-based deployments.
 
 ## Validation
 
@@ -95,13 +97,12 @@ pnpm build
 To reproduce the GitHub Pages static production build:
 
 ```bash
-NUXT_APP_BASE_URL=/weather-now/ NUXT_PUBLIC_API_MODE=external pnpm generate
+NUXT_PUBLIC_API_MODE=external pnpm generate
 ```
 
 To run browser tests against a served production build instead of the development
-server, set `PLAYWRIGHT_BASE_URL` to its URL, including the trailing slash and
-repository subpath when applicable:
+server, set `PLAYWRIGHT_BASE_URL` to its URL, including the trailing slash:
 
 ```bash
-PLAYWRIGHT_BASE_URL=http://localhost:3000/weather-now/ pnpm test:e2e tests/e2e/language-persistence.spec.ts
+PLAYWRIGHT_BASE_URL=http://localhost:3000/ pnpm test:e2e tests/e2e/language-persistence.spec.ts
 ```
