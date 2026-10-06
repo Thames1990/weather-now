@@ -1,4 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { resolveApiConfig } from './app/utils/api-config'
+
+const apiConfig = resolveApiConfig(process.env)
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
@@ -17,7 +21,8 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiMode: process.env.NUXT_PUBLIC_API_MODE || 'server'
+      apiMode: apiConfig.apiMode,
+      apiBaseUrl: apiConfig.apiBaseUrl
     }
   },
   modules: ['@nuxt/ui', '@nuxt/fonts', '@nuxtjs/i18n', '@nuxt/eslint'],

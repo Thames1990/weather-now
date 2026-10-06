@@ -2,6 +2,7 @@ import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } f
 import { resolveCityIdentity } from '~/utils/locations'
 import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '~/utils/provider-validation'
 import { normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
+import { apiErrorMessage, createWorkerApi } from '~/utils/worker-api'
 
 const defaultLocation: LocationResult = {
   name: 'London',
@@ -29,6 +30,10 @@ const dailyParams = 'weather_code,temperature_2m_max,temperature_2m_min,precipit
 export function useWeather() {
   const { locale } = useI18n()
   const config = useRuntimeConfig()
+  const apiMode = config.public.apiMode
+  // The Worker only serves forecasts and search; reverse geocoding and IP lookup keep the direct provider path.
+  const usesServerRoutes = apiMode === 'server'
+  const workerApi = apiMode === 'worker' ? createWorkerApi(String(config.public.apiBaseUrl), $fetch) : undefined
   const weather = ref<WeatherResponse | null>(null)
   const selectedLocation = ref<LocationResult>(loadingLocation)
   const query = ref('')
@@ -65,7 +70,8 @@ export function useWeather() {
   })
 
   async function fetchWeatherData(location: LocationResult): Promise<WeatherResponse> {
-    if (config.public.apiMode !== 'external') {
+    if (workerApi) return await workerApi.weather(location.latitude, location.longitude)
+    if (usesServerRoutes) {
       return await $fetch<WeatherResponse>('/api/weather', {
         query: { latitude: location.latitude, longitude: location.longitude }
       })
@@ -96,9 +102,9 @@ export function useWeather() {
       if (requestId !== weatherRequestId) return // a newer request has superseded this one
       weather.value = response
       if (import.meta.client) localStorage.setItem(savedLocationKey, JSON.stringify(location))
-    } catch {
+    } catch (error) {
       if (requestId !== weatherRequestId) return
-      errorMessage.value = 'errorForecastUnavailable'
+      errorMessage.value = apiErrorMessage(error, 'errorForecastUnavailable')
     } finally {
       if (requestId === weatherRequestId) isLoading.value = false
     }
@@ -123,20 +129,22 @@ export function useWeather() {
     searchError.value = ''
     hasSearched.value = false
     try {
-      const payload = config.public.apiMode === 'external'
-        ? await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
-            query: { name: normalizedQuery, count: 5, language: locale.value, format: 'json' }
-          })
-        : await $fetch<unknown>('/api/geocode', {
-            query: { name: normalizedQuery, language: locale.value }
-          })
+      const results = workerApi
+        ? await workerApi.locations(normalizedQuery)
+        : parseGeocodingResults(usesServerRoutes
+          ? await $fetch<unknown>('/api/geocode', {
+              query: { name: normalizedQuery, language: locale.value }
+            })
+          : await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
+              query: { name: normalizedQuery, count: 5, language: locale.value, format: 'json' }
+            }))
       if (requestId !== searchRequestId || query.value.trim() !== normalizedQuery) return
-      searchResults.value = parseGeocodingResults(payload)
+      searchResults.value = results
       hasSearched.value = true
-    } catch {
+    } catch (error) {
       if (requestId !== searchRequestId || query.value.trim() !== normalizedQuery) return
       searchResults.value = []
-      searchError.value = 'errorSearchUnavailable'
+      searchError.value = apiErrorMessage(error, 'errorSearchUnavailable')
       hasSearched.value = true
     } finally {
       if (requestId === searchRequestId) isSearching.value = false
@@ -147,12 +155,14 @@ export function useWeather() {
     if (!location.name || !location.country) return location
     try {
       const query = { name: location.name, count: 100, language: 'en' }
-      const payload = config.public.apiMode === 'external'
-        ? await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
-            query: { ...query, format: 'json' }
-          })
-        : await $fetch<unknown>('/api/geocode', { query })
-      const matches = parseGeocodingResults(payload)
+      // The Worker returns at most five English results, which still covers the common unique-city case.
+      const matches = workerApi
+        ? await workerApi.locations(location.name)
+        : parseGeocodingResults(usesServerRoutes
+          ? await $fetch<unknown>('/api/geocode', { query })
+          : await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
+              query: { ...query, format: 'json' }
+            }))
       return resolveCityIdentity(location, matches, admin1)
     } catch {
       // Identity enrichment is optional; weather for the precise coordinates remains usable.
@@ -182,12 +192,12 @@ export function useWeather() {
 
   async function locationFromCoordinates(latitude: number, longitude: number): Promise<LocationResult> {
     try {
-      const payload = config.public.apiMode === 'external'
-        ? await $fetch<unknown>('https://api.bigdatacloud.net/data/reverse-geocode-client', {
-            query: { latitude, longitude, localityLanguage: 'en' }
-          })
-        : await $fetch<unknown>('/api/reverse-geocode', {
+      const payload = usesServerRoutes
+        ? await $fetch<unknown>('/api/reverse-geocode', {
             query: { latitude, longitude }
+          })
+        : await $fetch<unknown>('https://api.bigdatacloud.net/data/reverse-geocode-client', {
+            query: { latitude, longitude, localityLanguage: 'en' }
           })
       const place = parseReverseGeocodeResult(payload)
       const location: LocationResult = {
@@ -205,9 +215,9 @@ export function useWeather() {
   }
 
   async function locationFromIp(): Promise<LocationResult> {
-    const payload = config.public.apiMode === 'external'
-      ? await $fetch<unknown>('https://ipinfo.io/json')
-      : await $fetch<unknown>('/api/ip-location')
+    const payload = usesServerRoutes
+      ? await $fetch<unknown>('/api/ip-location')
+      : await $fetch<unknown>('https://ipinfo.io/json')
     const place = parseIpLocationResult(payload)
     const location: LocationResult = {
       name: place.name || CURRENT_LOCATION_FALLBACK_NAME,

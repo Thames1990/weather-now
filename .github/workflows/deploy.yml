@@ -48,7 +48,8 @@ jobs:
         run: pnpm run generate
         env:
           NUXT_APP_BASE_URL: /
-          NUXT_PUBLIC_API_MODE: external
+          NUXT_PUBLIC_API_MODE: worker
+          NUXT_PUBLIC_API_BASE_URL: https://api.mohrworks.com
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

@@ -24,6 +24,7 @@ const upstream: OpenMeteoWeatherResponse = {
     precipitation_probability_max: [0], precipitation_sum: [0], sunshine_duration: [36000]
   }
 }
+const workerBaseUrl = 'https://api.example.test'
 const location = { name: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.41, timezone: 'auto' }
 
 afterEach(() => {
@@ -46,7 +47,7 @@ function deferred<T>() {
 function installWeatherGlobals(fetch: ReturnType<typeof vi.fn>, apiMode = 'server') {
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('useI18n', () => ({ locale: ref('de') }))
-  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode } }))
+  vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode, apiBaseUrl: workerBaseUrl } }))
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('watch', watch)
@@ -127,7 +128,7 @@ describe('weather fetch timestamp contract', () => {
     expect(state.searchError.value).toBe('errorSearchUnavailable')
   })
 
-  it.each(['server', 'external'])('enriches current-location identity with Open-Meteo in %s mode', async (mode) => {
+  it.each(['server', 'external', 'worker'])('enriches current-location identity with Open-Meteo in %s mode', async (mode) => {
     type GeoPosition = { coords: { latitude: number; longitude: number } }
     type GeoSuccess = (position: GeoPosition) => void
     const coordinates = { latitude: 50.94, longitude: 6.96 }
@@ -146,10 +147,10 @@ describe('weather fetch timestamp contract', () => {
       if (url === '/api/reverse-geocode' || url.includes('reverse-geocode-client')) {
         return { name: 'Cologne', country: 'Germany', admin1: 'North Rhine-Westphalia' }
       }
-      if (url === '/api/geocode' || url.includes('geocoding-api.open-meteo.com/v1/search')) {
+      if (url === '/api/geocode' || url === `${workerBaseUrl}/locations` || url.includes('geocoding-api.open-meteo.com/v1/search')) {
         return { results: [cologne] }
       }
-      if (url === '/api/weather') return normalizeWeather(upstream)
+      if (url === '/api/weather' || url === `${workerBaseUrl}/weather`) return normalizeWeather(upstream)
       if (url.includes('api.open-meteo.com/v1/forecast')) return upstream
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -170,12 +171,80 @@ describe('weather fetch timestamp contract', () => {
       latitude: coordinates.latitude,
       longitude: coordinates.longitude
     })
+    if (mode === 'worker') {
+      expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, expect.objectContaining({ query: { q: 'Cologne' } }))
+      expect(fetch).toHaveBeenCalledWith('https://api.bigdatacloud.net/data/reverse-geocode-client', expect.anything())
+      return
+    }
     expect(fetch).toHaveBeenCalledWith(
       mode === 'external' ? 'https://geocoding-api.open-meteo.com/v1/search' : '/api/geocode',
       expect.objectContaining({
         query: expect.objectContaining({ name: 'Cologne', count: 100, language: 'en' })
       })
     )
+  })
+})
+
+describe('Worker API mode', () => {
+  function rateLimited(retryAfter: string) {
+    return Object.assign(new Error('HTTP 429'), {
+      status: 429,
+      response: { status: 429, headers: new Headers({ 'Retry-After': retryAfter }) }
+    })
+  }
+
+  it('loads forecasts and searches through the configured Worker', async () => {
+    vi.useFakeTimers()
+    const berlin: LocationResult = { id: 2950159, name: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.41, timezone: 'Europe/Berlin' }
+    const fetch = vi.fn(async (url: string) => url.endsWith('/weather') ? normalizeWeather(upstream) : { results: [berlin] })
+    const state = await createWeatherState(fetch, 'worker')
+
+    await state.fetchWeather(location)
+    expect(state.weather.value).toEqual(normalizeWeather(upstream))
+    state.query.value = 'Berlin'
+    await state.searchLocations()
+    expect(state.searchResults.value).toEqual([berlin])
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([`${workerBaseUrl}/weather`, `${workerBaseUrl}/locations`])
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/weather`, {
+      query: { latitude: '52.52', longitude: '13.41' }, retry: false, timeout: 15_000
+    })
+  })
+
+  it('shows a rate-limit message and waits for Retry-After before calling the Worker again', async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(rateLimited('60'))
+      .mockResolvedValue(normalizeWeather(upstream))
+    const state = await createWeatherState(fetch, 'worker')
+
+    await state.fetchWeather(location)
+    expect(state.errorMessage.value).toBe('errorRateLimited')
+    expect(state.isLoading.value).toBe(false)
+
+    state.query.value = 'Berlin'
+    await state.searchLocations()
+    expect(state.searchError.value).toBe('errorRateLimited')
+    await state.fetchWeather(location)
+    expect(state.errorMessage.value).toBe('errorRateLimited')
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await state.fetchWeather(location)
+    expect(state.errorMessage.value).toBe('')
+    expect(state.weather.value).toEqual(normalizeWeather(upstream))
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a service-unavailable message for 503 and the generic message for network errors', async () => {
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error('HTTP 503'), { status: 503 }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const state = await createWeatherState(fetch, 'worker')
+
+    await state.fetchWeather(location)
+    expect(state.errorMessage.value).toBe('errorServiceUnavailable')
+    await state.fetchWeather(location)
+    expect(state.errorMessage.value).toBe('errorForecastUnavailable')
   })
 })
 

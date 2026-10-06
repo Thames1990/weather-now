@@ -18,7 +18,8 @@ export function useFavorites() {
   }
 
   async function geocode(query: { id: number; language: string } | { name: string; count: number; language: string }) {
-    if (config.public.apiMode !== 'external') {
+    // The Worker has no ID or localized lookup, so worker builds keep the direct provider path for labels.
+    if (config.public.apiMode === 'server') {
       return parseGeocodingResults(await $fetch<unknown>('/api/geocode', { query }))
     }
     const byId = 'id' in query
@@ -44,11 +45,11 @@ export function useFavorites() {
         return [language, { name: match.name, country: match.country, admin1: match.admin1 }]
       }
       const query = { latitude: location.latitude, longitude: location.longitude }
-      const payload = config.public.apiMode === 'external'
-        ? await $fetch<unknown>('https://api.bigdatacloud.net/data/reverse-geocode-client', {
+      const payload = config.public.apiMode === 'server'
+        ? await $fetch<unknown>('/api/reverse-geocode', { query: { ...query, language } })
+        : await $fetch<unknown>('https://api.bigdatacloud.net/data/reverse-geocode-client', {
             query: { ...query, localityLanguage: language }
           })
-        : await $fetch<unknown>('/api/reverse-geocode', { query: { ...query, language } })
       const labels = parseReverseGeocodeResult(payload)
       if (!labels.name) throw new Error('Favorite city name is unavailable')
       return [language, labels]

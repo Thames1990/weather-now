@@ -49,7 +49,8 @@ curl -i -H 'Origin: https://weather.mohrworks.com' http://localhost:8787/health
 Local API requests still use the public providers and count toward their quotas.
 Routine tests use mocked fetch, bindings, and clocks, never live APIs. Local
 frontend browser origins are deliberately not allowed; use curl for local API
-checks. No frontend integration or new frontend API mode is implemented here.
+checks. The frontend uses this Worker in its `worker` API mode; see the
+[root README](../../README.md#api-modes).
 
 ## HTTP contract
 
