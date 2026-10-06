@@ -48,6 +48,7 @@ function installWeatherGlobals(fetch: ReturnType<typeof vi.fn>, apiMode = 'serve
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('useI18n', () => ({ locale: ref('de') }))
   vi.stubGlobal('useRuntimeConfig', () => ({ public: { apiMode, apiBaseUrl: workerBaseUrl } }))
+  vi.stubGlobal('useState', (_key: string, initial: () => unknown) => ref(initial()))
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('watch', watch)
@@ -172,7 +173,9 @@ describe('weather fetch timestamp contract', () => {
       longitude: coordinates.longitude
     })
     if (mode === 'worker') {
-      expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, expect.objectContaining({ query: { q: 'Cologne' } }))
+      expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, {
+        query: { q: 'Cologne', language: 'en', count: '100' }, retry: false, timeout: 15_000
+      })
       expect(fetch).toHaveBeenCalledWith('https://api.bigdatacloud.net/data/reverse-geocode-client', expect.anything())
       return
     }
@@ -207,6 +210,56 @@ describe('Worker API mode', () => {
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([`${workerBaseUrl}/weather`, `${workerBaseUrl}/locations`])
     expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/weather`, {
       query: { latitude: '52.52', longitude: '13.41' }, retry: false, timeout: 15_000
+    })
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, {
+      query: { q: 'Berlin', language: 'de', count: '5' }, retry: false, timeout: 15_000
+    })
+  })
+
+  it('uses the Worker IP-location route and never calls ipinfo in worker mode', async () => {
+    const berlin: LocationResult = { id: 2950159, name: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.41, timezone: 'Europe/Berlin', admin1: 'Berlin' }
+    const fetch = vi.fn(async (url: string) => {
+      if (url === `${workerBaseUrl}/ip-location`) {
+        return { name: 'Berlin', country: 'DE', latitude: 52.52, longitude: 13.41 }
+      }
+      if (url === `${workerBaseUrl}/locations`) return { results: [berlin] }
+      if (url === `${workerBaseUrl}/weather`) return normalizeWeather(upstream)
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const state = await createWeatherState(fetch, 'worker')
+    vi.stubGlobal('navigator', {
+      geolocation: { getCurrentPosition(_success: unknown, failure: (error: unknown) => void) { failure(new Error('denied')) } }
+    })
+
+    state.useCurrentLocation()
+    await vi.waitFor(() => expect(state.selectedLocation.value).toMatchObject({ id: berlin.id, name: berlin.name }))
+
+    expect(state.selectedLocation.value).toMatchObject({ id: berlin.id, name: berlin.name })
+    expect(state.errorMessage.value).toBe('')
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/ip-location`, {
+      query: {}, retry: false, timeout: 15_000
+    })
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/locations`, {
+      query: { q: 'Berlin', language: 'en', count: '100' }, retry: false, timeout: 15_000
+    })
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain('https://ipinfo.io/json')
+  })
+
+  it('surfaces Worker IP-location 503 when browser geolocation also fails', async () => {
+    const unavailable = Object.assign(new Error('HTTP 503'), { status: 503 })
+    const fetch = vi.fn().mockRejectedValue(unavailable)
+    const state = await createWeatherState(fetch, 'worker')
+    vi.stubGlobal('navigator', {
+      geolocation: { getCurrentPosition(_success: unknown, failure: (error: unknown) => void) { failure(new Error('denied')) } }
+    })
+
+    state.useCurrentLocation()
+    await flushPromises()
+
+    expect(state.errorMessage.value).toBe('errorServiceUnavailable')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(`${workerBaseUrl}/ip-location`, {
+      query: {}, retry: false, timeout: 15_000
     })
   })
 

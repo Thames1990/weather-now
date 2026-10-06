@@ -1,11 +1,16 @@
 import type { FavoriteLocation, LocationLabels, LocationResult } from '~/types/weather'
-import { favoriteLabels, localizeFavorite, moveItem, sameLocation } from '~/utils/locations'
+import { favoriteLabels, localizeFavorite, moveItem, resolveCityIdentity, sameLocation } from '~/utils/locations'
 import { parseGeocodingResults, parseReverseGeocodeResult } from '~/utils/provider-validation'
+import { apiErrorMessage, LocationNotFoundError } from '~/utils/worker-api'
+import { useWorkerApi } from '~/composables/useWorkerApi'
 
 export function useFavorites() {
   const storedFavorites = usePersistentState<FavoriteLocation[]>('weather-now:favorites', [])
   const { locale, locales } = useI18n()
   const config = useRuntimeConfig()
+  const workerApi = config.public.apiMode === 'worker'
+    ? useWorkerApi(String(config.public.apiBaseUrl))
+    : undefined
   const errorMessage = ref('')
   const pending = ref(0)
   const requests = new Map<FavoriteLocation, symbol>()
@@ -18,7 +23,14 @@ export function useFavorites() {
   }
 
   async function geocode(query: { id: number; language: string } | { name: string; count: number; language: string }) {
-    // The Worker has no ID or localized lookup, so worker builds keep the direct provider path for labels.
+    if (workerApi) {
+      return 'id' in query
+        ? [await workerApi.location(query.id, query.language)]
+        : await workerApi.locations(query.name, {
+            language: query.language,
+            count: query.count
+          })
+    }
     if (config.public.apiMode === 'server') {
       return parseGeocodingResults(await $fetch<unknown>('/api/geocode', { query }))
     }
@@ -32,9 +44,12 @@ export function useFavorites() {
   async function loadLabels(location: FavoriteLocation): Promise<FavoriteLocation> {
     let id = location.id
     if (id === undefined) {
-      // Old favorites have no provider ID. Never pick a namesake in another city.
       const matches = await geocode({ name: location.name, count: 100, language: locale.value })
-      id = matches.find(match => sameLocation(match, location))?.id
+      const coordinateMatches = matches.filter(match => sameLocation(match, location))
+      const match = coordinateMatches.length === 1
+        ? coordinateMatches[0]
+        : resolveCityIdentity(location, matches, location.admin1)
+      id = match.id
     }
     const entries = await Promise.all(languages.value.map(async (language): Promise<[string, LocationLabels]> => {
       const existing = favoriteLabels(location, language)
@@ -44,6 +59,7 @@ export function useFavorites() {
         if (!match) throw new Error('Favorite city could not be identified')
         return [language, { name: match.name, country: match.country, admin1: match.admin1 }]
       }
+      if (workerApi) throw new LocationNotFoundError()
       const query = { latitude: location.latitude, longitude: location.longitude }
       const payload = config.public.apiMode === 'server'
         ? await $fetch<unknown>('/api/reverse-geocode', { query: { ...query, language } })
@@ -54,7 +70,7 @@ export function useFavorites() {
       if (!labels.name) throw new Error('Favorite city name is unavailable')
       return [language, labels]
     }))
-    return { ...location, id, labels: Object.fromEntries(entries) }
+    return { ...location, id, labels: { ...location.labels, ...Object.fromEntries(entries) } }
   }
 
   async function localize(location: FavoriteLocation) {
@@ -66,8 +82,10 @@ export function useFavorites() {
       const localized = await loadLabels(location)
       if (requests.get(location) !== token) return
       storedFavorites.value = storedFavorites.value.map(favorite => favorite === location ? localized : favorite)
-    } catch {
-      if (requests.get(location) === token) errorMessage.value = 'errorFavoriteLocalization'
+    } catch (error) {
+      if (requests.get(location) === token) {
+        errorMessage.value = apiErrorMessage(error, 'errorFavoriteLocalization')
+      }
     } finally {
       if (requests.get(location) === token) requests.delete(location)
       pending.value--

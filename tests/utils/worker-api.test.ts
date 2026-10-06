@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { LocationResult, OpenMeteoWeatherResponse } from '~/types/weather'
 import { resolveApiConfig } from '~/utils/api-config'
 import { normalizeWeather } from '~/utils/weather'
-import { ApiUnavailableError, apiErrorMessage, createWorkerApi, formatCoordinate, parseRetryAfter } from '~/utils/worker-api'
+import { ApiUnavailableError, apiErrorMessage, createWorkerApi, formatCoordinate, LocationNotFoundError, parseRetryAfter } from '~/utils/worker-api'
 
 const baseUrl = 'https://api.example.test'
 const berlin: LocationResult = { id: 2950159, name: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.41, timezone: 'Europe/Berlin', admin1: 'Berlin' }
@@ -61,15 +61,31 @@ describe('Worker API client', () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(weather)
       .mockResolvedValueOnce({ results: [berlin] })
+      .mockResolvedValueOnce({ results: [{ ...berlin, name: 'Berlin', country: 'Deutschland' }] })
+      .mockResolvedValueOnce({ results: [{ ...berlin, name: 'Berlin', country: 'Deutschland' }] })
+      .mockResolvedValueOnce({ name: 'Berlin', country: 'DE', latitude: 52.52, longitude: 13.41 })
     const api = createWorkerApi(baseUrl, fetch)
 
     expect(await api.weather(52.52, 13.41)).toEqual(weather)
     expect(await api.locations('  Berlin ')).toEqual([berlin])
+    expect(await api.locations('Berlin', { language: 'de', count: 100 }))
+      .toEqual([{ ...berlin, name: 'Berlin', country: 'Deutschland' }])
+    expect(await api.location(berlin.id!, 'de')).toEqual({ ...berlin, name: 'Berlin', country: 'Deutschland' })
+    expect(await api.ipLocation()).toEqual({ name: 'Berlin', country: 'DE', latitude: 52.52, longitude: 13.41 })
     expect(fetch).toHaveBeenNthCalledWith(1, `${baseUrl}/weather`, {
       query: { latitude: '52.52', longitude: '13.41' }, retry: false, timeout: 15_000
     })
     expect(fetch).toHaveBeenNthCalledWith(2, `${baseUrl}/locations`, {
-      query: { q: 'Berlin' }, retry: false, timeout: 15_000
+      query: { q: 'Berlin', language: 'en', count: '5' }, retry: false, timeout: 15_000
+    })
+    expect(fetch).toHaveBeenNthCalledWith(3, `${baseUrl}/locations`, {
+      query: { q: 'Berlin', language: 'de', count: '100' }, retry: false, timeout: 15_000
+    })
+    expect(fetch).toHaveBeenNthCalledWith(4, `${baseUrl}/locations/${berlin.id}`, {
+      query: { language: 'de' }, retry: false, timeout: 15_000
+    })
+    expect(fetch).toHaveBeenNthCalledWith(5, `${baseUrl}/ip-location`, {
+      query: {}, retry: false, timeout: 15_000
     })
   })
 
@@ -85,6 +101,27 @@ describe('Worker API client', () => {
     const api = createWorkerApi(baseUrl, fetch)
     await expect(api.weather(0, 0)).rejects.toThrow('Invalid weather API response')
     await expect(api.locations('Nowhere')).rejects.toThrow(/geocoding result/)
+  })
+
+  it('validates new location requests before contacting the Worker', async () => {
+    const fetch = vi.fn()
+    const api = createWorkerApi(baseUrl, fetch)
+    await expect(api.locations('A')).rejects.toThrow('Invalid Worker location query')
+    await expect(api.locations('Berlin', { language: 'fr' })).rejects.toThrow('Invalid Worker location language')
+    await expect(api.locations('Berlin', { count: 101 })).rejects.toThrow('Invalid Worker location count')
+    await expect(api.location(0)).rejects.toThrow('Invalid Worker location ID')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('maps unknown saved location IDs to a stable not-found error', async () => {
+    const fetch = vi.fn().mockRejectedValue(httpError(404))
+    const api = createWorkerApi(baseUrl, fetch)
+    await expect(api.location(999, 'de')).rejects.toBeInstanceOf(LocationNotFoundError)
+    expect(apiErrorMessage(new LocationNotFoundError(), 'errorFavoriteLocalization'))
+      .toBe('errorFavoriteLocationNotFound')
+    expect(fetch).toHaveBeenCalledWith(`${baseUrl}/locations/999`, {
+      query: { language: 'de' }, retry: false, timeout: 15_000
+    })
   })
 
   it('honors Retry-After after a 429 without contacting the Worker again', async () => {
@@ -115,6 +152,24 @@ describe('Worker API client', () => {
     now = 59_999
     await expect(api.locations('Berlin')).rejects.toBeInstanceOf(ApiUnavailableError)
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares the rate-limit cooldown across Worker clients and operations', async () => {
+    let now = 1_000
+    const cooldown = { blockedUntil: 0, blockedReason: 'rate-limited' as const }
+    const searchFetch = vi.fn().mockRejectedValue(httpError(429, '30'))
+    const ipFetch = vi.fn().mockResolvedValue({ name: 'Berlin', country: 'DE', latitude: 52.52, longitude: 13.41 })
+    const searchApi = createWorkerApi(baseUrl, searchFetch, () => now, cooldown)
+    const ipApi = createWorkerApi(baseUrl, ipFetch, () => now, cooldown)
+
+    await expect(searchApi.locations('Berlin')).rejects.toMatchObject({ reason: 'rate-limited' })
+    await expect(ipApi.ipLocation()).rejects.toMatchObject({ reason: 'rate-limited', retryAt: 31_000 })
+    expect(searchFetch).toHaveBeenCalledTimes(1)
+    expect(ipFetch).not.toHaveBeenCalled()
+
+    now = 31_000
+    await expect(ipApi.ipLocation()).resolves.toMatchObject({ name: 'Berlin' })
+    expect(ipFetch).toHaveBeenCalledTimes(1)
   })
 
   it('reports 503 as unavailable and only waits when the Worker asks for it', async () => {
@@ -153,6 +208,7 @@ describe('Worker API client', () => {
   it('maps API failures to translated messages', () => {
     expect(apiErrorMessage(new ApiUnavailableError('rate-limited'), 'errorForecastUnavailable')).toBe('errorRateLimited')
     expect(apiErrorMessage(new ApiUnavailableError('unavailable'), 'errorForecastUnavailable')).toBe('errorServiceUnavailable')
+    expect(apiErrorMessage(new LocationNotFoundError(), 'errorFavoriteLocalization')).toBe('errorFavoriteLocationNotFound')
     expect(apiErrorMessage(new Error('offline'), 'errorSearchUnavailable')).toBe('errorSearchUnavailable')
   })
 })

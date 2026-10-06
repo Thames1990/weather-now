@@ -2,7 +2,8 @@ import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } f
 import { resolveCityIdentity } from '~/utils/locations'
 import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '~/utils/provider-validation'
 import { normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
-import { apiErrorMessage, createWorkerApi } from '~/utils/worker-api'
+import { apiErrorMessage } from '~/utils/worker-api'
+import { useWorkerApi } from '~/composables/useWorkerApi'
 
 const defaultLocation: LocationResult = {
   name: 'London',
@@ -31,9 +32,9 @@ export function useWeather() {
   const { locale } = useI18n()
   const config = useRuntimeConfig()
   const apiMode = config.public.apiMode
-  // The Worker only serves forecasts and search; reverse geocoding and IP lookup keep the direct provider path.
+  // Reverse geocoding remains browser-direct only for the current device position.
   const usesServerRoutes = apiMode === 'server'
-  const workerApi = apiMode === 'worker' ? createWorkerApi(String(config.public.apiBaseUrl), $fetch) : undefined
+  const workerApi = apiMode === 'worker' ? useWorkerApi(String(config.public.apiBaseUrl)) : undefined
   const weather = ref<WeatherResponse | null>(null)
   const selectedLocation = ref<LocationResult>(loadingLocation)
   const query = ref('')
@@ -130,7 +131,7 @@ export function useWeather() {
     hasSearched.value = false
     try {
       const results = workerApi
-        ? await workerApi.locations(normalizedQuery)
+        ? await workerApi.locations(normalizedQuery, { language: locale.value, count: 5 })
         : parseGeocodingResults(usesServerRoutes
           ? await $fetch<unknown>('/api/geocode', {
               query: { name: normalizedQuery, language: locale.value }
@@ -155,9 +156,8 @@ export function useWeather() {
     if (!location.name || !location.country) return location
     try {
       const query = { name: location.name, count: 100, language: 'en' }
-      // The Worker returns at most five English results, which still covers the common unique-city case.
       const matches = workerApi
-        ? await workerApi.locations(location.name)
+        ? await workerApi.locations(location.name, { language: 'en', count: 100 })
         : parseGeocodingResults(usesServerRoutes
           ? await $fetch<unknown>('/api/geocode', { query })
           : await $fetch<unknown>('https://geocoding-api.open-meteo.com/v1/search', {
@@ -215,10 +215,11 @@ export function useWeather() {
   }
 
   async function locationFromIp(): Promise<LocationResult> {
-    const payload = usesServerRoutes
-      ? await $fetch<unknown>('/api/ip-location')
-      : await $fetch<unknown>('https://ipinfo.io/json')
-    const place = parseIpLocationResult(payload)
+    const place = workerApi
+      ? await workerApi.ipLocation()
+      : parseIpLocationResult(usesServerRoutes
+          ? await $fetch<unknown>('/api/ip-location')
+          : await $fetch<unknown>('https://ipinfo.io/json'))
     const location: LocationResult = {
       name: place.name || CURRENT_LOCATION_FALLBACK_NAME,
       country: place.country,
@@ -247,11 +248,12 @@ export function useWeather() {
     let settled = false
     let ipFailed = false
     let geoFailed = false
+    let ipErrorMessage: string | undefined
 
     function failIfBothGaveUp() {
       if (!isCurrentRequest() || settled || !ipFailed || !geoFailed) return
       settled = true
-      errorMessage.value = 'errorLocationNotFound'
+      errorMessage.value = ipErrorMessage || 'errorLocationNotFound'
       isLoading.value = false
     }
 
@@ -263,9 +265,10 @@ export function useWeather() {
         if (!isCurrentRequest() || settled) return
         settled = true
         await loadWeather(place)
-      } catch {
+      } catch (error) {
         if (!isCurrentRequest()) return
         ipFailed = true
+        if (workerApi) ipErrorMessage = apiErrorMessage(error, 'errorLocationNotFound')
         failIfBothGaveUp()
       }
     })()

@@ -27,6 +27,7 @@
   "undo": "Rückgängig",
   "loadingFavoriteNames": "Stadtnamen in allen Sprachen werden geladen…",
   "errorFavoriteLocalization": "Einige Ortsnamen konnten gerade nicht geladen werden. Deine Favoriten sind sicher gespeichert – versuche es gleich noch einmal.",
+  "errorFavoriteLocationNotFound": "Ein gespeicherter Ort konnte nicht mehr zugeordnet werden. Dein Favorit bleibt erhalten – entferne ihn und suche den Ort erneut.",
   "nowIn": "Aktuelle Bedingungen",
   "yourCoordinates": "Aktuelle Position",
   "forecastUnavailable": "Vorhersage nicht verfügbar",
