@@ -28,7 +28,44 @@ function coordinate(params: URLSearchParams, key: string): number {
   return Number(value)
 }
 
-function upstreamUrl(url: URL): URL {
+export const SUPPORTED_LANGUAGES = ['en', 'de'] as const
+const DEFAULT_SEARCH_COUNT = 5
+const MAX_SEARCH_COUNT = 100
+const LOCATION_ID_PATH = /^\/locations\/([^/]+)$/
+
+type Route =
+  | { kind: 'weather'; upstream: URL }
+  | { kind: 'search'; upstream: URL; maxResults: number }
+  | { kind: 'location'; upstream: URL; id: number }
+
+function language(params: URLSearchParams): string {
+  const value = params.get('language')
+  if (value === null) return 'en'
+  if (!(SUPPORTED_LANGUAGES as readonly string[]).includes(value)) {
+    throw new ApiError(400, 'invalid_request', `language must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`)
+  }
+  return value
+}
+
+function searchCount(params: URLSearchParams): number {
+  const value = params.get('count')
+  if (value === null) return DEFAULT_SEARCH_COUNT
+  const count = /^[1-9]\d{0,2}$/.test(value) ? Number(value) : Number.NaN
+  if (!(count <= MAX_SEARCH_COUNT)) {
+    throw new ApiError(400, 'invalid_request', `count must be an integer from 1 to ${MAX_SEARCH_COUNT}`)
+  }
+  return count
+}
+
+function locationId(segment: string): number {
+  const id = /^[1-9]\d{0,15}$/.test(segment) ? Number(segment) : Number.NaN
+  if (!Number.isSafeInteger(id)) {
+    throw new ApiError(400, 'invalid_request', 'Location ID must be a positive integer')
+  }
+  return id
+}
+
+function route(url: URL): Route {
   if (url.pathname === '/weather') {
     validateQuery(url.searchParams, ['latitude', 'longitude'])
     const latitude = coordinate(url.searchParams, 'latitude')
@@ -41,26 +78,96 @@ function upstreamUrl(url: URL): URL {
       latitude: String(latitude), longitude: String(longitude),
       current, hourly, daily, timezone: 'auto', timeformat: 'unixtime', forecast_days: '7'
     }).toString()
-    return upstream
+    return { kind: 'weather', upstream }
   }
 
-  validateQuery(url.searchParams, ['q'])
+  const idSegment = LOCATION_ID_PATH.exec(url.pathname)?.[1]
+  if (idSegment !== undefined) {
+    const id = locationId(idSegment)
+    validateQuery(url.searchParams, ['language'])
+    const upstream = new URL('https://geocoding-api.open-meteo.com/v1/get')
+    upstream.search = new URLSearchParams({
+      id: String(id), language: language(url.searchParams), format: 'json'
+    }).toString()
+    return { kind: 'location', upstream, id }
+  }
+
+  validateQuery(url.searchParams, ['q', 'language', 'count'])
   const query = url.searchParams.get('q')?.trim()
   if (!query || query.length < 2 || query.length > 100
     || [...query].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
     throw new ApiError(400, 'invalid_request', 'q must contain 2 to 100 characters without control characters')
   }
+  const count = searchCount(url.searchParams)
   const upstream = new URL('https://geocoding-api.open-meteo.com/v1/search')
-  upstream.search = new URLSearchParams({ name: query, count: '5', language: 'en', format: 'json' }).toString()
-  return upstream
+  upstream.search = new URLSearchParams({
+    name: query, count: String(count), language: language(url.searchParams), format: 'json'
+  }).toString()
+  return { kind: 'search', upstream, maxResults: count }
 }
 
-async function enforceRateLimit(request: Request, env: Env): Promise<void> {
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isLocationNotFound(payload: unknown): boolean {
+  return isObject(payload) && payload.error === true && payload.reason === 'Location ID not found.'
+}
+
+function parseSearch(payload: unknown, maxResults: number): unknown {
+  if (!isObject(payload)
+    || (!('results' in payload) && Object.keys(payload).some(key => key !== 'generationtime_ms'))
+    || ('generationtime_ms' in payload
+      && (typeof payload.generationtime_ms !== 'number'
+        || !Number.isFinite(payload.generationtime_ms) || payload.generationtime_ms < 0))
+    || (Array.isArray(payload.results) && payload.results.length > maxResults)) {
+    throw new Error('Invalid geocoding envelope')
+  }
+  return { results: parseGeocodingResults(payload) }
+}
+
+function parseLocation(payload: unknown, id: number): unknown {
+  // Open-Meteo /v1/get returns one bare location; wrap it in the search contract the app already parses.
+  if (!isObject(payload) || payload.id !== id) throw new Error('Invalid location payload')
+  return { results: parseGeocodingResults({ results: [payload] }) }
+}
+
+function decimal(value: unknown): number | undefined {
+  return typeof value === 'string' && value.length <= 24 && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)
+    ? Number(value)
+    : undefined
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function ipLocation(request: Request): Record<string, string | number> {
+  // Cloudflare derives these fields from the connecting IP at the edge; no third party is contacted.
+  const cf: unknown = request.cf
+  const properties = isObject(cf) ? cf : {}
+  const latitude = decimal(properties.latitude)
+  const longitude = decimal(properties.longitude)
+  if (latitude === undefined || longitude === undefined || !isValidCoordinates(latitude, longitude)) {
+    throw new ApiError(503, 'ip_location_unavailable', 'Approximate location unavailable')
+  }
+  const result: Record<string, string | number> = {
+    name: optionalText(properties.city) ?? '',
+    country: optionalText(properties.country) ?? '',
+    latitude,
+    longitude
+  }
+  const region = optionalText(properties.region)
+  if (region) result.region = region
+  return result
+}
+
+async function enforceRateLimit(request: Request, env: Env, upstream: boolean): Promise<void> {
   try {
     // Cloudflare supplies this header at the edge; never use caller-supplied X-Forwarded-For.
     const key = request.headers.get('CF-Connecting-IP') || 'anonymous'
     if (!(await env.CLIENT_RATE_LIMITER.limit({ key })).success
-      || !(await env.UPSTREAM_RATE_LIMITER.limit({ key: 'all-provider-requests' })).success) {
+      || (upstream && !(await env.UPSTREAM_RATE_LIMITER.limit({ key: 'all-provider-requests' })).success)) {
       throw new ApiError(429, 'rate_limited', 'Request limit reached')
     }
   } catch (error) {
@@ -83,7 +190,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     if (origin !== null && origin !== BROWSER_ORIGIN) {
       throw new ApiError(403, 'origin_not_allowed', 'Browser origin not allowed')
     }
-    if (!['/health', '/weather', '/locations'].includes(url.pathname)) {
+    if (!['/health', '/weather', '/locations', '/ip-location'].includes(url.pathname)
+      && !LOCATION_ID_PATH.test(url.pathname)) {
       throw new ApiError(404, 'not_found', 'Endpoint not found')
     }
     if (request.method === 'OPTIONS') {
@@ -102,26 +210,22 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       validateQuery(url.searchParams, [])
       return Response.json({ status: 'ok' }, { headers })
     }
-    const upstream = upstreamUrl(url)
-    await enforceRateLimit(request, env)
-    const payload = await fetchJson(upstream)
+    if (url.pathname === '/ip-location') {
+      validateQuery(url.searchParams, [])
+      await enforceRateLimit(request, env, false)
+      return Response.json(ipLocation(request), { headers })
+    }
+    const target = route(url)
+    await enforceRateLimit(request, env, true)
+    const payload = await fetchJson(target.upstream, target.kind === 'location' ? { isNotFound: isLocationNotFound } : {})
     let result: unknown
     try {
-      if (typeof payload === 'object' && payload !== null && 'error' in payload) {
-        throw new Error('Provider error payload')
-      }
-      if (url.pathname === '/locations' && typeof payload === 'object' && payload !== null) {
-        if ((!('results' in payload) && Object.keys(payload).some(key => key !== 'generationtime_ms'))
-          || ('generationtime_ms' in payload
-            && (typeof payload.generationtime_ms !== 'number'
-              || !Number.isFinite(payload.generationtime_ms) || payload.generationtime_ms < 0))
-          || ('results' in payload && Array.isArray(payload.results) && payload.results.length > 5)) {
-          throw new Error('Invalid geocoding envelope')
-        }
-      }
-      result = url.pathname === '/weather'
+      if (isObject(payload) && 'error' in payload) throw new Error('Provider error payload')
+      result = target.kind === 'weather'
         ? normalizeWeather(parseOpenMeteoWeatherResponse(payload))
-        : { results: parseGeocodingResults(payload) }
+        : target.kind === 'search'
+          ? parseSearch(payload, target.maxResults)
+          : parseLocation(payload, target.id)
     } catch {
       throw new ApiError(502, 'upstream_invalid', 'Invalid provider response')
     }

@@ -42,6 +42,9 @@ bindings. A small number of non-destructive smoke requests:
 curl -i http://localhost:8787/health
 curl -i 'http://localhost:8787/weather?latitude=52.52&longitude=13.40'
 curl -i 'http://localhost:8787/locations?q=Berlin'
+curl -i 'http://localhost:8787/locations?q=Berlin&language=de&count=100'
+curl -i 'http://localhost:8787/locations/2950159?language=de'
+curl -i http://localhost:8787/ip-location
 curl -i 'http://localhost:8787/weather?latitude=91&longitude=0'
 curl -i -H 'Origin: https://weather.mohrworks.com' http://localhost:8787/health
 ```
@@ -67,13 +70,30 @@ weather data does not require user accounts or client-side secrets.
 | --- | --- | --- |
 | `/health` | None | `{"status":"ok"}` |
 | `/weather` | Required latitude [-90, 90], longitude [-180, 180] | Existing `WeatherResponse` contract |
-| `/locations` | Required `q`, trimmed length 2-100 | `{"results":[LocationResult,...]}` |
+| `/locations` | Required `q`, trimmed length 2-100; optional `language`, `count` | `{"results":[LocationResult,...]}` |
+| `/locations/{id}` | Optional `language` | `{"results":[LocationResult]}` |
+| `/ip-location` | None | `IpLocation` (see below) |
 
 Coordinates must be finite decimal strings (maximum 24 characters); empty
 values, exponent/hex notation, repeated parameters, and unknown parameters are
-400 errors. Search rejects control characters. Locations return at most five
-English-language results, with provider-native names if no translation exists.
-No matches return `{"results":[]}`, not an error.
+400 errors. Search rejects control characters.
+
+`language` is optional on both location endpoints and must exactly match one of
+the app's locales: `en` or `de`. It defaults to `en`, so existing callers keep
+their behavior. `count` is optional on search: a plain integer from 1 to 100
+without leading zeros, defaulting to 5. The Worker rejects provider responses
+that contain more results than requested. Names fall back to the provider-native
+name when no translation exists. No matches return `{"results":[]}`, not an
+error.
+
+`/locations/{id}` looks up an Open-Meteo/GeoNames location ID with geocoding
+`/v1/get`. The ID must be a positive safe integer written in decimal without
+leading zeros, with no trailing path segment. The provider returns one bare
+location object; the Worker requires its `id` to match the requested ID and
+wraps it in the search contract, so `parseGeocodingResults` handles both
+endpoints. Open-Meteo answers an unknown ID with HTTP 400
+`{"reason":"Location ID not found.","error":true}`, which the Worker maps to
+404 `location_not_found`. Any other provider 400 remains a 502.
 
 Example location response:
 
@@ -93,6 +113,29 @@ Example location response:
 
 `LocationResult` has optional `id` and `admin1`. A missing provider country
 becomes an empty string, matching the existing app contract.
+
+### IP location
+
+`/ip-location` returns the approximate location Cloudflare assigns to the
+connecting IP (`request.cf`). It makes no third-party request and sends the
+client IP nowhere. The shape matches `parseIpLocationResult`:
+
+```json
+{"name":"Berlin","region":"Land Berlin","country":"DE","latitude":52.52437,"longitude":13.41053}
+```
+
+`name` (city) and `country` (ISO 3166-1 alpha-2) are empty strings when
+Cloudflare does not provide them. `region` appears only when known. When
+Cloudflare provides no valid latitude/longitude (for example, in some local or
+non-edge contexts), the Worker returns 503 `ip_location_unavailable`. It never
+returns a guessed location.
+
+**Accuracy differs from ipinfo.io**, the source behind the current frontend and
+Nuxt route. Cloudflare's IP geolocation is approximate (often city-level or
+coarser), may resolve to the ISP's location or a VPN/relay exit, and can differ
+from ipinfo's database. Treat it as a coarse fallback after denied browser
+geolocation, not a precise position. The endpoint counts against the per-client
+limit only; it does not use the provider limit.
 
 Weather uses the field lists in `src/index.ts`, matching the existing Nuxt route:
 current conditions, hourly forecast, and seven daily forecasts. Temperatures
@@ -114,17 +157,20 @@ Errors have one shape, e.g.:
 | --- | --- | --- |
 | 400 | `invalid_request` | Invalid input |
 | 403 | `origin_not_allowed`, `preflight_not_allowed` | Browser request denied |
-| 404 / 405 | `not_found`, `method_not_allowed` | Path / method unsupported |
+| 404 | `not_found`, `location_not_found` | Path unsupported / unknown location ID |
+| 405 | `method_not_allowed` | Method unsupported |
 | 429 | `rate_limited`, `upstream_rate_limited` | Local edge or provider limit; `Retry-After: 60` |
 | 502 | `upstream_network`, `upstream_status`, `upstream_invalid` | Network, non-2xx, JSON/schema or size failure |
 | 503 | `rate_limit_unavailable` | Missing or failed abuse protection; no provider request |
+| 503 | `ip_location_unavailable` | Cloudflare supplied no valid edge geolocation |
 | 504 | `upstream_timeout` | Eight-second total provider deadline |
 | 500 | `internal_error` | Unexpected internal failure |
 
 The eight-second deadline covers response headers **and body consumption**.
 Bodies are limited to 1 MB. Redirects are rejected. Upstream URLs are fixed to
-`api.open-meteo.com/v1/forecast` and
-`geocoding-api.open-meteo.com/v1/search`; callers cannot supply destinations,
+`api.open-meteo.com/v1/forecast`,
+`geocoding-api.open-meteo.com/v1/search`, and
+`geocoding-api.open-meteo.com/v1/get`; callers cannot supply destinations,
 field lists, credentials, or forecast lengths. Provider errors and exception
 details are not echoed to clients.
 
@@ -150,11 +196,42 @@ frontend's direct API calls. If commercial or higher-volume use is intended,
 obtain a suitable provider plan and implement its authenticated server-side
 contract first. This implementation has no paid-provider mode or API key.
 
+### Reverse geocoding is not proxied
+
+The frontend currently calls BigDataCloud's free
+`api.bigdatacloud.net/data/reverse-geocode-client` endpoint from the browser.
+This Worker deliberately provides **no `/reverse-geocode` endpoint**. BigDataCloud's
+[free client-side API page](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api)
+and [fair use policy](https://www.bigdatacloud.com/docs/article/fair-use-policy-for-free-client-side-reverse-geocoding-api)
+(checked October 6, 2026) require these calls to come directly from the client,
+using the device's current location from standard platform location APIs.
+Server-side calls to the client endpoint are prohibited and can cause an IP
+ban, which returns HTTP 402. A Worker proxy would make every user share
+Cloudflare egress IPs under one ban. BigDataCloud directs server-side use to
+its keyed [Reverse Geocode to City API](https://www.bigdatacloud.com/reverse-geocoding/reverse-geocode-to-city-api),
+which requires an account/API key and plan quota. Labeling stored favorite
+coordinates may also fall outside the client endpoint's current-location rule.
+
+Options, which require an owner decision:
+
+1. **BigDataCloud server-side API (recommended if keeping this provider):** add
+   an API key as a Wrangler secret, fail closed without it, and keep the same
+   validation, limits, and response contract as `parseReverseGeocodeResult`.
+   Confirm the plan's quota and terms first.
+2. **Avoid reverse geocoding for favorites:** favorites with an Open-Meteo ID
+   already localize through `/locations/{id}`. Only use reverse geocoding for
+   the device's current position, called directly by the browser under the
+   fair use policy.
+3. Another provider with explicit server-side terms (for example, OSM
+   Nominatim's usage policy: max 1 request/second, identifying User-Agent,
+   attribution). This adds a new provider and its own compliance review.
+
 ## Abuse protection and operational limits
 
 Cloudflare's [native rate-limit binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
 is configured in `wrangler.jsonc`: **20 requests/minute per client IP** across
-both data endpoints, plus **60 provider requests/minute in aggregate**.
+all data endpoints (weather, both location endpoints, and IP location), plus
+**60 provider requests/minute in aggregate** for endpoints that call Open-Meteo.
 The client IP comes from Cloudflare's edge `CF-Connecting-IP`; absent IPs share
 one anonymous bucket. IPs are not logged. Shared NATs can share the client cap.
 Health and preflight do not call providers and are excluded from these caps.
@@ -201,7 +278,8 @@ After authorization and prerequisites above:
    No routes or custom domains are declared here: retain the existing dashboard
    custom-domain attachment, and verify it before and after publishing.
    `workers_dev` and preview URLs stay disabled.
-4. Check `/health`, a Berlin forecast/search, invalid input, and CORS at
+4. Check `/health`, a Berlin forecast/search, localized search and ID lookup,
+   `/ip-location`, invalid input, and CORS at
    `https://api.mohrworks.com`. Check rate-limit denial with controlled traffic
    and inspect Workers Logs. Do not reconfigure DNS, Pages, or frontend API mode.
 
