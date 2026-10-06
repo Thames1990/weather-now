@@ -34,6 +34,8 @@
   "tryAgain": "Erneut versuchen",
   "errorForecastUnavailable": "Die Vorhersage konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.",
   "errorSearchUnavailable": "Die Ortssuche ist vorübergehend nicht verfügbar. Prüfe deine Verbindung und versuche es erneut.",
+  "errorRateLimited": "Weather Now erhält gerade zu viele Anfragen. Bitte warte eine Minute und versuche es dann erneut.",
+  "errorServiceUnavailable": "Der Wetterdienst ist vorübergehend nicht verfügbar. Bitte versuche es in ein paar Minuten erneut.",
   "errorLocationUnsupported": "Standortdienste sind in diesem Browser nicht verfügbar.",
   "errorLocationNotFound": "Wir konnten deinen Standort nicht bestimmen. Suche stattdessen nach einer Stadt.",
   "checkingYourLocation": "Standort wird geladen",

@@ -77,8 +77,31 @@ pnpm preview
 Pull requests targeting `main`, pushes to `main`, and manual workflow runs
 check lint, unit tests, and a static production build. Pushes and manual runs
 deploy to https://weather.mohrworks.com/ only after all checks pass;
-pull requests never deploy. The workflow builds for the site root and calls the
-public Open-Meteo, BigDataCloud, and ipinfo APIs directly.
+pull requests never deploy. The workflow builds for the site root in `worker`
+API mode with `NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com`, so forecasts
+and city search go through the [weather Worker](workers/weather/README.md).
+
+## API modes
+
+`NUXT_PUBLIC_API_MODE` is read at build time:
+
+| Mode | Forecast and search | Used by |
+| --- | --- | --- |
+| `server` (default) | Nuxt server routes under `/api` | `pnpm dev`, `pnpm build` |
+| `external` | Open-Meteo directly from the browser | Static fallback |
+| `worker` | `NUXT_PUBLIC_API_BASE_URL` (`/weather`, `/locations`) | GitHub Pages |
+
+`worker` mode requires `NUXT_PUBLIC_API_BASE_URL` to be an absolute http(s) URL
+without query or fragment; the build fails otherwise. Unknown modes also fail.
+The Worker does not cover reverse geocoding, IP location, or localized favorite
+labels, so outside `server` mode those still call Open-Meteo, BigDataCloud, and
+ipinfo directly. Worker search results are English only.
+
+Worker requests are never retried automatically. A `429` shows a rate-limit
+message and pauses further Worker requests for the `Retry-After` delay, or 60
+seconds if the browser cannot read it (the Worker does not currently expose that
+header via CORS). A `503` shows a temporary-unavailability message; network and
+other errors keep the existing forecast/search error messages.
 
 In the repository settings, set **Pages → Source** to **GitHub Actions** once
 before the first deployment, then set **Pages → Custom domain** to
@@ -97,7 +120,7 @@ pnpm build
 To reproduce the GitHub Pages static production build:
 
 ```bash
-NUXT_PUBLIC_API_MODE=external pnpm generate
+NUXT_PUBLIC_API_MODE=worker NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com pnpm generate
 ```
 
 To run browser tests against a served production build instead of the development

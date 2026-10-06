@@ -34,6 +34,8 @@
   "tryAgain": "Try again",
   "errorForecastUnavailable": "The forecast could not be loaded. Check your connection and try again.",
   "errorSearchUnavailable": "Location search is temporarily unavailable. Check your connection and try again.",
+  "errorRateLimited": "Weather Now is getting too many requests right now. Please wait a minute and try again.",
+  "errorServiceUnavailable": "The weather service is temporarily unavailable. Please try again in a few minutes.",
   "errorLocationUnsupported": "Location services are not available in this browser.",
   "errorLocationNotFound": "We could not determine your location. Search for a city instead.",
   "checkingYourLocation": "Loading your location",

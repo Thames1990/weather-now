@@ -34,12 +34,12 @@ async function setup(mode = 'server', saved: FavoriteLocation[] = [], fetch = vi
 function localizedFetch(mode: string) {
   return vi.fn(async (_url: string, options: { query: { language: string } }) => {
     const location = options.query.language === 'de' ? koeln : cologne
-    return mode === 'external' ? location : { results: [location] }
+    return mode === 'server' ? { results: [location] } : location
   })
 }
 
 describe('multilingual favorites', () => {
-  it.each(['server', 'external'])('saves all selectable labels and switches without fetching in %s mode', async (mode) => {
+  it.each(['server', 'external', 'worker'])('saves all selectable labels and switches without fetching in %s mode', async (mode) => {
     const { state, storage, locale, fetch } = await setup(mode, [], localizedFetch(mode))
     state.toggleFavorite(cologne)
     await vi.waitFor(() => expect(state.isLocalizing.value).toBe(false))
@@ -59,7 +59,7 @@ describe('multilingual favorites', () => {
     locale.value = 'en'
     expect(state.favorites.value[0]?.name).toBe('Cologne')
     expect(fetch).toHaveBeenCalledTimes(2)
-    expect(fetch).toHaveBeenCalledWith(mode === 'external' ? 'https://geocoding-api.open-meteo.com/v1/get' : '/api/geocode',
+    expect(fetch).toHaveBeenCalledWith(mode === 'server' ? '/api/geocode' : 'https://geocoding-api.open-meteo.com/v1/get',
       expect.objectContaining({ query: expect.objectContaining({ id: 2886242, language: 'de' }) }))
   })
 
@@ -153,7 +153,7 @@ describe('multilingual favorites', () => {
     expect(storage.value[0]?.labels).toBeUndefined()
   })
 
-  it.each(['server', 'external'])('localizes coordinate-based favorites with reverse geocoding in %s mode', async (mode) => {
+  it.each(['server', 'external', 'worker'])('localizes coordinate-based favorites with reverse geocoding in %s mode', async (mode) => {
     const fetch = vi.fn(async (url: string, options: { query: { language?: string; localityLanguage?: string } }) => {
       if (url.includes('geocode') && !url.includes('reverse-geocode')) return { results: [] }
       if (url.includes('/v1/search')) return { results: [] }
