@@ -266,14 +266,25 @@ without copying untrusted exception text.
 
 Application summaries use `console.log` below HTTP 500 and `console.error` for
 HTTP 500 and above. Cloudflare Workers Issues records error logs and groups
-occurrences, so expected 4xx responses (including validation errors, 404s, and
-429s) do not create issues. The configured `observability.issues.enabled`
+occurrences. An isolated check of the real handler with synthetic bindings
+confirmed that validation (400), unknown-route (404), and rate-limit (429)
+responses did not create issues. The configured `observability.issues.enabled`
 setting requires Wrangler 4.134 or newer; this Worker uses Wrangler 4.147
 ([Issues documentation](https://developers.cloudflare.com/workers/observability/issues/)).
 Local tests verify that one sanitized `console.error` summary is emitted for
 unexpected 5xx failures and that expected 4xx responses use `console.log`.
-Cloudflare-side issue grouping has not been verified with a controlled
-production 5xx. Invocation logs are disabled, and persistent custom log storage
+An isolated Cloudflare Worker check on October 7, 2026 confirmed that handled
+5xx responses are grouped without persistent logs: seven 500/503 requests
+produced seven occurrences in one issue, with no duplicate occurrences or
+issues from the preceding 4xx checks. Query values were redacted.
+Occurrences retain raw
+request paths, including the synthetic location ID, and selected headers
+(`user-agent`, `cf-ipcountry`, and `cf-ray`). Errors are grouped under the
+generic title `request`, without the original exception stack or the summary's
+error code in occurrence details. Issues therefore does not yet meet the
+location privacy and useful diagnostic-context requirements. The temporary
+Worker was removed after verification; production was not fault-injected.
+Invocation logs are disabled, and persistent custom log storage
 is disabled because Cloudflare attaches sensitive request metadata to each log
 event. The structured application summary is still emitted, but it is not
 available in the dashboard's persistent Logs or Query Builder. `version` is
@@ -284,10 +295,9 @@ segments. A real-time `wrangler tail` also includes that sensitive metadata;
 do not use it for routine production debugging while this privacy limitation
 remains.
 
-**Notifications are not configured.** The account-specific free-tier
-notification destinations could not be inspected from this repository
-workspace, and no existing email, chat, webhook, or incident destination is
-documented here. Cloudflare Issues supports automations to external
+**Notifications are not configured.** The account was inspected on October 7,
+2026; no existing Issues notification destinations or automations were found.
+Cloudflare Issues supports automations to external
 destinations, but this change does not create an account, integration, or relay.
 The dashboard's Issues view is therefore the available investigation baseline;
 verify the account's existing destinations before enabling any notification.
@@ -296,9 +306,11 @@ verify the account's existing destinations before enabling any notification.
 
 Persistent Workers Logs are disabled (`observability.logs.persist: false`).
 Application log sampling is configured to 1.0, but no application log events
-are persisted for dashboard queries. Issues remains enabled; verify whether it
-continues to record and group failures without persistent logs before relying
-on it as the operational signal. See [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
+are persisted for dashboard queries. Issues remains enabled in production,
+but the isolated check found that it independently retains location-ID paths
+and selected request headers. Disabling persistent logs does not disable
+Issues occurrence storage. A production configuration decision is still
+required; do not treat this setup as fully privacy-safe. See [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
 and [Observability pricing](https://developers.cloudflare.com/observability/pricing/).
 
 Cloudflare attaches request-context metadata to custom log events in addition
@@ -324,8 +336,8 @@ or redact those attributes and that behavior has been verified against a real
 span. This review uses Cloudflare's published
 [span and attribute list](https://developers.cloudflare.com/workers/observability/traces/spans-and-attributes/);
 no production trace was enabled or inspected. Issues remains enabled without
-persistent logs; its diagnostic context has not been verified for the same
-privacy exposure.
+persistent logs, but its independently retained occurrence metadata includes
+raw location-ID paths and selected headers.
 
 ### Manual checks and recovery
 
