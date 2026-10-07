@@ -366,40 +366,51 @@ outages may be found only by the maintainer or users. The DNS-only GitHub Pages
 site also has no browser telemetry, so client-side JavaScript errors and
 real-user frontend performance are not visible to Workers Observability.
 
-## Manual deployment to the existing service
+## Automated production deployment
 
-**Deployment requires authorization.** The authorized rollout and production
-health check above are complete; further deployments still require
-authorization.
-No secrets/env variables are required by this free-provider implementation.
-Use interactive `wrangler login` locally, or a least-privilege
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the operator's environment.
-Never put credentials in committed files or browser/mobile clients.
-Local secrets, if needed later, belong in ignored `.dev.vars`.
+`.github/workflows/deploy-worker.yml` is independent of the GitHub Pages
+workflow. Every pull request targeting `main` reports the required
+`Validate Worker` check. Worker-related changes run lint, type-checking, tests,
+and a Wrangler dry-run build; unrelated PRs report success without running
+those checks. Relevant changes include the Worker, its shared source imports,
+dependency/lint configuration, and its workflow; see the
+[workflow overview](../../.github/workflows/README.md).
+These jobs receive no Cloudflare credentials and never publish. Changes to
+`workers/weather/**` or the shared `app/utils/provider-validation.ts`,
+`app/utils/weather.ts`, and `app/types/weather.ts` pushed to `main` run the
+full checks and then deploy the
+existing **api** Worker. The `main` branch requires successful status checks
+for pull requests but does not require changes to arrive through a pull
+request: direct pushes to `main` are allowed and trigger the same workflows.
+Worker deployments still wait for Worker validation and the production
+Environment approval. Manual Worker workflow runs validate only and never
+deploy. Deployments are serialized and record
+`Deploy <short SHA>: <commit subject>` in Cloudflare's deployment history.
 
-After authorization and prerequisites above:
+Before the first deployment, configure the GitHub **production** Environment
+with required reviewers (and prevent self-review where available) so the
+deploy job pauses for approval. Add
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as Environment secrets.
+Create the token for the Cloudflare account containing the existing **api**
+Worker, scoped to that Worker with the **Editor** role (legacy permission:
+**Workers Scripts: Edit**). Do not grant Workers Routes Write: the Wrangler
+configuration intentionally leaves the existing dashboard-managed
+`api.mohrworks.com` custom-domain attachment unchanged. Keep these credentials
+out of repository-level secrets and local files.
 
-1. Authenticate with `pnpm --dir workers/weather exec wrangler login` and verify
-   the intended account with `pnpm --dir workers/weather exec wrangler whoami`.
-2. In Cloudflare, verify the existing **api** Worker already owns
-   **api.mohrworks.com**. Record its current deployment/version ID for rollback,
-   and inspect existing bindings/settings before replacing Hello World.
-3. Run the checks above, then `pnpm --dir workers/weather deploy`.
-   The name is already `api`; do not create a differently named Worker.
-   No routes or custom domains are declared here: retain the existing dashboard
-   custom-domain attachment, and verify it before and after publishing.
-   `workers_dev` and preview URLs stay disabled.
-4. Check `/health`, a Berlin forecast/search, localized search and ID lookup,
-   `/ip-location`, invalid input, and CORS at
-   `https://api.mohrworks.com`. Check rate-limit denial with controlled traffic.
-   Persistent Workers Logs are disabled due to Cloudflare-enriched request
-   metadata; do not enable them until adequate redaction is available. Do not
-   reconfigure DNS, Pages, or frontend API mode.
+To deploy through a pull request, wait for its checks and merge it; to deploy
+through a direct push, push the Worker change to `main`. Both paths require
+Worker validation and production Environment approval before publishing. A
+manual workflow run can be used to validate a selected branch, but not to
+deploy. For recovery, roll back to a recorded healthy version using the
+procedure below; rerunning the workflow does not roll back.
 
-For rollback, select the recorded pre-deployment version in the existing
-Worker's dashboard, or use
+## Manual rollback
+
+Use the Cloudflare dashboard to roll back to a recorded healthy version, or
+use an authorized operator's Wrangler session:
 `pnpm --dir workers/weather exec wrangler rollback <VERSION_ID>`.
-Verify `/health`/Hello World as appropriate and the unchanged hostname
-afterward. Rollback restores code, not necessarily changed bindings/settings;
-restore any settings changed during rollout separately. Stop local Wrangler
-with Ctrl-C when finished.
+Treat rollback as an emergency recovery action, not a routine deployment.
+Verify `/health` and the unchanged hostname afterward. Rollback restores code,
+not necessarily changed bindings/settings; restore any settings changed during
+rollout separately.
