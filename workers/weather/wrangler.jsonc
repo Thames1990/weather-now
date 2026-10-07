@@ -10,7 +10,7 @@
     "enabled": true,
     "redact_query_string": true,
     "logs": { "invocation_logs": false, "persist": false, "head_sampling_rate": 1 },
-    "issues": { "enabled": true },
+    "issues": { "enabled": false },
     "traces": { "enabled": false }
   },
   "ratelimits": [
