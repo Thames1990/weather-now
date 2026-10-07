@@ -1,28 +1,17 @@
-import { isValidCoordinates, parseReverseGeocodeResult } from '~/utils/provider-validation'
+import { parseReverseGeocodeResult, type ReverseGeocodeResult } from '~/utils/provider-validation'
+import { fetchAndParseProviderResponse, parseCoordinates } from '../utils/provider'
 
-export default defineCachedEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event): Promise<ReverseGeocodeResult> => {
   const { latitude, longitude, language } = getQuery(event)
-  const parsedLatitude = Number(latitude)
-  const parsedLongitude = Number(longitude)
-  if (!isValidCoordinates(parsedLatitude, parsedLongitude)) {
-    throw createError({ statusCode: 400, statusMessage: 'latitude and longitude must be valid coordinates' })
-  }
-
-  let payload: unknown
-  try {
-    payload = await $fetch<unknown>(
+  const coordinates = parseCoordinates(latitude, longitude)
+  return fetchAndParseProviderResponse(
+    (): Promise<unknown> => $fetch<unknown>(
       'https://api.bigdatacloud.net/data/reverse-geocode-client',
-      { query: { latitude: parsedLatitude, longitude: parsedLongitude, localityLanguage: language || 'en' } }
-    )
-  } catch {
-    throw createError({ statusCode: 502, statusMessage: 'Upstream reverse-geocoding provider unavailable' })
-  }
-
-  try {
-    return parseReverseGeocodeResult(payload)
-  } catch {
-    throw createError({ statusCode: 502, statusMessage: 'Invalid reverse-geocoding provider response' })
-  }
+      { query: { latitude: coordinates.latitude, longitude: coordinates.longitude, localityLanguage: language || 'en' } }
+    ),
+    parseReverseGeocodeResult,
+    'reverse-geocoding'
+  )
 }, {
   maxAge: 60 * 60,
   getKey: (event) => {

@@ -1,16 +1,10 @@
-import { parseIpLocationResult } from '~/utils/provider-validation'
+import { parseIpLocationResult, type IpLocationResult } from '~/utils/provider-validation'
+import { fetchAndParseProviderResponse } from '../utils/provider'
 
-export default defineEventHandler(async () => {
-  let payload: unknown
-  try {
-    payload = await $fetch<unknown>('https://ipinfo.io/json')
-  } catch {
-    throw createError({ statusCode: 502, statusMessage: 'Upstream IP location provider unavailable' })
-  }
-
-  try {
-    return parseIpLocationResult(payload)
-  } catch {
-    throw createError({ statusCode: 502, statusMessage: 'Invalid IP location provider response' })
-  }
+export default defineEventHandler(async (): Promise<IpLocationResult> => {
+  return fetchAndParseProviderResponse(
+    (): Promise<unknown> => $fetch<unknown>('https://ipinfo.io/json'),
+    parseIpLocationResult,
+    'IP location'
+  )
 })
