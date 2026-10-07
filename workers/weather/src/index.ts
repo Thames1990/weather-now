@@ -185,7 +185,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     'X-Content-Type-Options': 'nosniff',
     'Vary': 'Origin'
   })
-  if (origin === BROWSER_ORIGIN) headers.set('Access-Control-Allow-Origin', BROWSER_ORIGIN)
+  if (origin === BROWSER_ORIGIN) {
+    headers.set('Access-Control-Allow-Origin', BROWSER_ORIGIN)
+    headers.set('Access-Control-Expose-Headers', 'Retry-After')
+  }
   try {
     if (origin !== null && origin !== BROWSER_ORIGIN) {
       throw new ApiError(403, 'origin_not_allowed', 'Browser origin not allowed')

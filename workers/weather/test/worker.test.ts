@@ -348,6 +348,29 @@ describe('Abuse protection and CORS', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('exposes the rate-limit cooldown only to the allowed browser origin', async () => {
+    clientLimit.mockResolvedValue({ success: false })
+    const allowed = await handleRequest(request('/locations?q=Berlin', {
+      headers: { Origin: 'https://weather.mohrworks.com' }
+    }), env)
+    expect(allowed.status).toBe(429)
+    expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe('https://weather.mohrworks.com')
+    expect(allowed.headers.get('Access-Control-Expose-Headers')).toBe('Retry-After')
+    expect(allowed.headers.get('Retry-After')).toBe('60')
+    expect(allowed.headers.get('Vary')).toBe('Origin')
+    expect(allowed.headers.get('Cache-Control')).toBe('no-store')
+
+    const denied = await handleRequest(request('/locations?q=Berlin', {
+      headers: { Origin: 'https://evil.example' }
+    }), env)
+    expect(denied.status).toBe(403)
+    expect(denied.headers.has('Access-Control-Allow-Origin')).toBe(false)
+    expect(denied.headers.has('Access-Control-Expose-Headers')).toBe(false)
+    expect(denied.headers.get('Vary')).toBe('Origin')
+    expect(denied.headers.get('Cache-Control')).toBe('no-store')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('fails closed when a limiter errors or bindings are missing', async () => {
     clientLimit.mockRejectedValue(new Error('private binding detail'))
     expect((await handleRequest(request('/locations?q=Berlin'), env)).status).toBe(503)

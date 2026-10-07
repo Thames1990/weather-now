@@ -63,7 +63,8 @@ Only GET and restricted OPTIONS preflight are supported. Unknown paths return
 404; unsupported methods return 405 with `Allow: GET, OPTIONS`.
 All responses use `Cache-Control: no-store`. No caching or retries are enabled.
 Only `https://weather.mohrworks.com` receives CORS permission, without
-credentials or custom request headers. Other browser origins receive 403.
+credentials or custom request headers; that origin can read the `Retry-After`
+response header. Other browser origins receive 403.
 Requests without Origin (including mobile/native clients) are allowed but still
 rate limited. **CORS is neither authentication nor abuse protection.** Public
 weather data does not require user accounts or client-side secrets.

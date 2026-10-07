@@ -114,10 +114,10 @@ browser.
 
 Worker requests are never retried automatically. A `429` shows a rate-limit
 message and pauses further Worker API requests for the
-`Retry-After` delay, or 60 seconds if the browser cannot read it (the Worker
-does not currently expose that header via CORS). A `503` shows a
-temporary-unavailability message; other errors keep the relevant forecast,
-search, or favorite-localization message.
+`Retry-After` delay, or 60 seconds if the header is missing or malformed. The
+Worker exposes that header to the allowed browser origin through CORS. A `503`
+shows a temporary-unavailability message; other errors keep the relevant
+forecast, search, or favorite-localization message.
 
 In the repository settings, set **Pages → Source** to **GitHub Actions** once
 before the first deployment, then set **Pages → Custom domain** to
