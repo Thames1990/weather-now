@@ -80,6 +80,8 @@ deploy to https://weather.mohrworks.com/ only after all checks pass;
 pull requests never deploy. The workflow builds for the site root in `worker`
 API mode with `NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com`, so forecasts
 and city search go through the [weather Worker](workers/weather/README.md).
+For request logs, grouped Worker errors, privacy limits, manual checks, and
+rollback steps, see its [observability runbook](workers/weather/README.md#observability-and-operations).
 
 ## API modes
 

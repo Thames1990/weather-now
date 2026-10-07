@@ -27,7 +27,8 @@ const clientLimit = vi.fn<Env['CLIENT_RATE_LIMITER']['limit']>()
 const upstreamLimit = vi.fn<Env['UPSTREAM_RATE_LIMITER']['limit']>()
 const env: Env = {
   CLIENT_RATE_LIMITER: { limit: clientLimit },
-  UPSTREAM_RATE_LIMITER: { limit: upstreamLimit }
+  UPSTREAM_RATE_LIMITER: { limit: upstreamLimit },
+  CF_VERSION_METADATA: { id: 'test-version' }
 }
 const request = (path: string, init?: RequestInit) => new Request(`https://api.mohrworks.com${path}`, init)
 
@@ -35,6 +36,7 @@ beforeEach(() => {
   clientLimit.mockResolvedValue({ success: true })
   upstreamLimit.mockResolvedValue({ success: true })
   vi.stubGlobal('fetch', fetchMock)
+  vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => {
@@ -45,12 +47,78 @@ afterEach(() => {
 })
 
 describe('Worker contract', () => {
+  it('emits one allowlisted privacy-safe request summary', async () => {
+    fetchMock.mockResolvedValue(Response.json(weather))
+    await handleRequest(request('/weather?latitude=52.52&longitude=13.40'), env)
+
+    expect(console.log).toHaveBeenCalledTimes(1)
+    expect(console.error).not.toHaveBeenCalled()
+    const summary = vi.mocked(console.log).mock.calls[0]?.[0]
+    expect(Object.keys(summary)).toEqual([
+      'event', 'route', 'method', 'status', 'code', 'duration_ms',
+      'upstream_outcome', 'upstream_ms', 'version'
+    ])
+    expect(summary).toEqual({
+      event: 'request',
+      route: '/weather',
+      method: 'GET',
+      status: 200,
+      code: null,
+      duration_ms: expect.any(Number),
+      upstream_outcome: 'ok',
+      upstream_ms: expect.any(Number),
+      version: 'test-version'
+    })
+    expect(JSON.stringify(summary)).not.toMatch(/52\.52|13\.40|latitude|longitude|api\.open-meteo\.com/)
+  })
+
   it('returns minimal health without calling providers or rate limiters', async () => {
     const response = await handleRequest(request('/health'), env)
     expect(await response.json()).toEqual({ status: 'ok' })
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(clientLimit).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps expected 4xx responses out of the Issues error channel', async () => {
+    clientLimit.mockResolvedValue({ success: false })
+    expect((await handleRequest(request('/locations?q=A'), env)).status).toBe(400)
+    expect((await handleRequest(request('/missing'), env)).status).toBe(404)
+    expect((await handleRequest(request('/locations?q=Berlin'), env)).status).toBe(429)
+
+    expect(console.error).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(console.log).mock.calls.map(([summary]) => summary)).toEqual([
+      expect.objectContaining({ event: 'request', status: 400, code: 'invalid_request', upstream_outcome: 'none' }),
+      expect.objectContaining({ event: 'request', status: 404, code: 'not_found', upstream_outcome: 'none' }),
+      expect.objectContaining({ event: 'request', status: 429, code: 'rate_limited', upstream_outcome: 'none' })
+    ])
+  })
+
+  it('logs unexpected failures with one safe grouping summary', async () => {
+    const malformedRequest = request('/health')
+    Object.defineProperty(malformedRequest, 'url', {
+      get: () => { throw new Error('private location 52.52,13.40') }
+    })
+    const response = await handleRequest(malformedRequest, env)
+
+    expect(response.status).toBe(500)
+    expect(console.error).toHaveBeenCalledTimes(1)
+    expect(console.log).not.toHaveBeenCalled()
+    const summary = vi.mocked(console.error).mock.calls[0]?.[0]
+    expect(summary).toEqual({
+      event: 'request',
+      route: 'other',
+      method: 'unknown',
+      status: 500,
+      code: 'internal_error',
+      duration_ms: expect.any(Number),
+      upstream_outcome: 'none',
+      upstream_ms: null,
+      version: 'test-version'
+    })
+    expect(JSON.stringify(summary)).not.toMatch(/private|location|52\.52|13\.40/)
   })
 
   it('returns the existing normalized weather contract from a fixed provider', async () => {
@@ -130,6 +198,16 @@ describe('Worker contract', () => {
     expect(response.status).toBe(404)
     expect(await response.json()).toMatchObject({ error: { code: 'location_not_found' } })
     expect(console.error).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledTimes(1)
+    const summary = vi.mocked(console.log).mock.calls[0]?.[0]
+    expect(summary).toMatchObject({
+      event: 'request',
+      route: '/locations/:id',
+      status: 404,
+      code: 'location_not_found',
+      upstream_outcome: 'status',
+      version: 'test-version'
+    })
   })
 
   it.each([
@@ -220,6 +298,10 @@ describe('Provider failures and deadlines', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('Retry-After')).toBe('60')
     expect(await response.json()).toMatchObject({ error: { code: 'upstream_rate_limited' } })
+    expect(console.error).not.toHaveBeenCalled()
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toMatchObject({
+      event: 'request', upstream_outcome: 'rate_limited', upstream_ms: expect.any(Number)
+    })
   })
 
   it('does not expose transport exception details or request data in logs', async () => {
@@ -227,9 +309,16 @@ describe('Provider failures and deadlines', () => {
     const response = await handleRequest(request('/locations?q=Berlin'), env)
     expect(response.status).toBe(502)
     expect(await response.text()).not.toMatch(/secret|Berlin/)
-    expect(console.error).toHaveBeenCalledWith(JSON.stringify({
-      event: 'request_failed', code: 'upstream_network', status: 502
-    }))
+    expect(console.error).toHaveBeenCalledTimes(1)
+    const summary = vi.mocked(console.error).mock.calls[0]?.[0]
+    expect(summary).toMatchObject({
+      event: 'request',
+      route: '/locations',
+      status: 502,
+      code: 'upstream_network',
+      upstream_outcome: 'status'
+    })
+    expect(JSON.stringify(summary)).not.toMatch(/secret|private|Berlin|open-meteo|query/)
   })
 
   it.each([
@@ -247,6 +336,9 @@ describe('Provider failures and deadlines', () => {
     const response = await handleRequest(request('/locations?q=Berlin'), env)
     expect(response.status).toBe(502)
     expect(await response.json()).toMatchObject({ error: { code: 'upstream_invalid' } })
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toMatchObject({
+      event: 'request', upstream_outcome: 'invalid', upstream_ms: expect.any(Number)
+    })
   })
 
   it('rejects malformed forecasts', async () => {
@@ -275,6 +367,9 @@ describe('Provider failures and deadlines', () => {
     const response = await pending
     expect(response.status).toBe(504)
     expect(await response.json()).toMatchObject({ error: { code: 'upstream_timeout' } })
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toMatchObject({
+      event: 'request', upstream_outcome: 'timeout', upstream_ms: expect.any(Number)
+    })
     expect(signal?.aborted).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -316,7 +411,11 @@ describe('IP location', () => {
     const body = await response.text()
     expect(JSON.parse(body)).toMatchObject({ error: { code: 'ip_location_unavailable' } })
     expect(body).not.toMatch(/192\.0\.2\.1|Berlin|52\.5/)
-    expect(console.error).toHaveBeenCalledWith(JSON.stringify({ event: 'request_failed', code: 'ip_location_unavailable', status: 503 }))
+    const summary = vi.mocked(console.error).mock.calls[0]?.[0]
+    expect(summary).toMatchObject({
+      event: 'request', route: '/ip-location', code: 'ip_location_unavailable', status: 503,
+      upstream_outcome: 'none', upstream_ms: null
+    })
   })
 
   it('is rate limited and fails closed per client', async () => {

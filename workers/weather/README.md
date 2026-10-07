@@ -3,14 +3,16 @@
 Separate Cloudflare Worker for the existing **api** service at
 **https://api.mohrworks.com**. The Pages frontend, Nuxt server routes, and
 `NUXT_PUBLIC_API_MODE=external` remain unchanged. The backend is active in
-production as version `06493413-ffbe-42df-bf51-4a75cde59ffd` (October 6, 2026),
-which adds localized/ID location lookups and `/ip-location`. Deployment status
-confirms 100% traffic, and the existing custom domain remains attached to `api`
-in the production environment. Health, Berlin forecast, default and German
-search, ID lookup (known and unknown), IP location, invalid input, and allowed
-and denied CORS origins passed production smoke checks. Its rollback version
-is the first backend release, `eb40b221-ad8a-432d-b46f-ff6c4e746d7a`; the
-original Hello World version is `a53035d0-f185-4dc2-b752-048fe5ba98a5`.
+production as version `138333c3-cf4b-4faf-ade7-f0329388b91e` (October 7, 2026),
+with 100% traffic on the existing custom domain. This version adds structured
+request summaries, query-string redaction, enables Issues, and disables
+persistent Workers Logs because Cloudflare adds sensitive request metadata to
+custom log events. Traces remain disabled. `/health` returned HTTP 200 after
+the deployment; controlled production 5xx issue grouping has not been checked.
+Earlier production smoke checks covered the Berlin forecast, default and
+German search, ID lookup (known and unknown), IP location, invalid input, and
+allowed and denied CORS origins. The original Hello World version is
+`a53035d0-f185-4dc2-b752-048fe5ba98a5`.
 
 The first attempt (`c231d12f-7d85-47a8-83c3-4447c67829a8`) was immediately
 rolled back after health still returned Hello World. An authorized retry
@@ -251,18 +253,106 @@ and arrange traffic/quota monitoring plus an operator who can disable the
 data endpoints or roll back if the budget is at risk. A globally guaranteed
 quota would require a separately designed centralized limiter.
 
-Workers Logs are enabled. Automatic invocation logs are disabled to avoid
-logging URLs containing coordinates/searches. Structured application errors
-include only event, code, and status; no IP, query, body, or exception details.
-Use `pnpm --dir workers/weather exec wrangler tail --format json` after
-authentication to observe errors. Review Cloudflare dashboard log/trace and
-retention settings for request metadata before publishing. No Sentry DSN or
-placeholder integration is included.
+## Observability and operations
+
+In the Cloudflare dashboard, open **Workers & Pages → api → Observability**
+and use **Issues**. Each invocation emits exactly one structured
+`event: "request"` summary with only `route`, `method`, `status`, error `code`,
+`duration_ms`, `upstream_outcome`, `upstream_ms`, and deployment `version`.
+The application summary uses route templates and does not include IPs, request
+bodies, headers, provider payloads, coordinates, search terms, location IDs,
+exception messages, or stacks. Stable error codes provide safe grouping context
+without copying untrusted exception text.
+
+Application summaries use `console.log` below HTTP 500 and `console.error` for
+HTTP 500 and above. Cloudflare Workers Issues records error logs and groups
+occurrences, so expected 4xx responses (including validation errors, 404s, and
+429s) do not create issues. The configured `observability.issues.enabled`
+setting requires Wrangler 4.134 or newer; this Worker uses Wrangler 4.147
+([Issues documentation](https://developers.cloudflare.com/workers/observability/issues/)).
+Local tests verify that one sanitized `console.error` summary is emitted for
+unexpected 5xx failures and that expected 4xx responses use `console.log`.
+Cloudflare-side issue grouping has not been verified with a controlled
+production 5xx. Invocation logs are disabled, and persistent custom log storage
+is disabled because Cloudflare attaches sensitive request metadata to each log
+event. The structured application summary is still emitted, but it is not
+available in the dashboard's persistent Logs or Query Builder. `version` is
+Cloudflare Version Metadata's deployment ID; local runs use `local`.
+`redact_query_string` removes incoming query values from request-context
+metadata, but does not redact request headers, geolocation fields, or path
+segments. A real-time `wrangler tail` also includes that sensitive metadata;
+do not use it for routine production debugging while this privacy limitation
+remains.
+
+**Notifications are not configured.** The account-specific free-tier
+notification destinations could not be inspected from this repository
+workspace, and no existing email, chat, webhook, or incident destination is
+documented here. Cloudflare Issues supports automations to external
+destinations, but this change does not create an account, integration, or relay.
+The dashboard's Issues view is therefore the available investigation baseline;
+verify the account's existing destinations before enabling any notification.
+
+### Sampling, tracing, and privacy
+
+Persistent Workers Logs are disabled (`observability.logs.persist: false`).
+Application log sampling is configured to 1.0, but no application log events
+are persisted for dashboard queries. Issues remains enabled; verify whether it
+continues to record and group failures without persistent logs before relying
+on it as the operational signal. See [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
+and [Observability pricing](https://developers.cloudflare.com/observability/pricing/).
+
+Cloudflare attaches request-context metadata to custom log events in addition
+to the application summary. A production tail confirmed that this metadata
+includes client IP headers and IP-geolocation fields (including city and
+coordinates), as well as the request path. Query redaction is enabled and
+removes query values from the incoming URL, but `/locations/{id}` can still
+expose the location ID in the path. Cloudflare's available redaction setting
+covers query strings, not request headers, geolocation fields, or path
+segments. Persistent Workers Logs have therefore been disabled until adequate
+redaction is available. The earlier deployed version did not redact query
+strings; its existing log events may remain queryable until the account's
+retention period expires.
+
+Native tracing is explicitly disabled. Cloudflare's documented automatic
+attributes include incoming `url.full`/`url.query`, request metadata, and
+outbound fetch `url.full`/`url.query`. The weather provider URL contains
+coordinates and geocoding URLs contain search text or location IDs. Query
+redaction does not remove path segments, so these attributes cannot be made
+privacy-safe by lowering the head-sampling rate; therefore production tracing
+is not enabled. Do not enable it unless Cloudflare provides a way to exclude
+or redact those attributes and that behavior has been verified against a real
+span. This review uses Cloudflare's published
+[span and attribute list](https://developers.cloudflare.com/workers/observability/traces/spans-and-attributes/);
+no production trace was enabled or inspected. Issues remains enabled without
+persistent logs; its diagnostic context has not been verified for the same
+privacy exposure.
+
+### Manual checks and recovery
+
+- Check `https://api.mohrworks.com/health`; expect HTTP 200 and
+  `{"status":"ok"}`.
+- Load `https://weather.mohrworks.com/` and verify the dashboard loads.
+- Check [Open-Meteo status](https://status.open-meteo.com/) for provider
+  incidents and [GitHub status](https://www.githubstatus.com/) for Pages or
+  Actions incidents; check [Cloudflare status](https://www.cloudflarestatus.com/)
+  for Worker platform incidents.
+- Investigate in Workers **Issues**; persistent application Logs are disabled
+  pending a privacy-safe way to remove Cloudflare-enriched request metadata.
+- Roll back the Worker to a recorded healthy version with
+  `pnpm --dir workers/weather exec wrangler rollback <VERSION_ID>`.
+- Roll back Pages by redeploying the previous known-good commit through the
+  repository's Pages workflow.
+
+There are no independent uptime probes: complete DNS, hosting, or application
+outages may be found only by the maintainer or users. The DNS-only GitHub Pages
+site also has no browser telemetry, so client-side JavaScript errors and
+real-user frontend performance are not visible to Workers Observability.
 
 ## Manual deployment to the existing service
 
 **Deployment requires authorization.** The authorized rollout and production
-verification above are complete; further changes still require authorization.
+health check above are complete; further deployments still require
+authorization.
 No secrets/env variables are required by this free-provider implementation.
 Use interactive `wrangler login` locally, or a least-privilege
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the operator's environment.
@@ -283,8 +373,10 @@ After authorization and prerequisites above:
    `workers_dev` and preview URLs stay disabled.
 4. Check `/health`, a Berlin forecast/search, localized search and ID lookup,
    `/ip-location`, invalid input, and CORS at
-   `https://api.mohrworks.com`. Check rate-limit denial with controlled traffic
-   and inspect Workers Logs. Do not reconfigure DNS, Pages, or frontend API mode.
+   `https://api.mohrworks.com`. Check rate-limit denial with controlled traffic.
+   Persistent Workers Logs are disabled due to Cloudflare-enriched request
+   metadata; do not enable them until adequate redaction is available. Do not
+   reconfigure DNS, Pages, or frontend API mode.
 
 For rollback, select the recorded pre-deployment version in the existing
 Worker's dashboard, or use

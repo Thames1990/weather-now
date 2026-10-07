@@ -5,6 +5,7 @@ import { ApiError, fetchJson } from './upstream'
 export interface Env {
   CLIENT_RATE_LIMITER: RateLimit
   UPSTREAM_RATE_LIMITER: RateLimit
+  CF_VERSION_METADATA?: { id: string }
 }
 
 const BROWSER_ORIGIN = 'https://weather.mohrworks.com'
@@ -37,6 +38,8 @@ type Route =
   | { kind: 'weather'; upstream: URL }
   | { kind: 'search'; upstream: URL; maxResults: number }
   | { kind: 'location'; upstream: URL; id: number }
+
+type RouteTemplate = '/weather' | '/locations' | '/locations/:id' | '/ip-location' | '/health' | 'other'
 
 function language(params: URLSearchParams): string {
   const value = params.get('language')
@@ -176,25 +179,73 @@ async function enforceRateLimit(request: Request, env: Env, upstream: boolean): 
   }
 }
 
+type UpstreamOutcome = 'ok' | 'timeout' | 'status' | 'invalid' | 'rate_limited' | 'none'
+
+interface RequestTelemetry {
+  upstreamOutcome: UpstreamOutcome
+  upstreamMs: number | null
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt))
+}
+
+function routeTemplate(pathname: string): RouteTemplate {
+  if (pathname === '/weather' || pathname === '/locations' || pathname === '/ip-location' || pathname === '/health') {
+    return pathname
+  }
+  return LOCATION_ID_PATH.test(pathname) ? '/locations/:id' : 'other'
+}
+
+function outcomeForUpstreamError(error: unknown): Exclude<UpstreamOutcome, 'ok' | 'none'> {
+  if (error instanceof ApiError) {
+    if (error.code === 'upstream_timeout') return 'timeout'
+    if (error.code === 'upstream_rate_limited') return 'rate_limited'
+    if (error.code === 'upstream_invalid') return 'invalid'
+  }
+  return 'status'
+}
+
+async function fetchWithTelemetry(url: URL, telemetry: RequestTelemetry, options: Parameters<typeof fetchJson>[1]): Promise<unknown> {
+  const startedAt = performance.now()
+  try {
+    const payload = await fetchJson(url, options)
+    telemetry.upstreamOutcome = 'ok'
+    return payload
+  } catch (error) {
+    telemetry.upstreamOutcome = outcomeForUpstreamError(error)
+    throw error
+  } finally {
+    telemetry.upstreamMs = elapsedMs(startedAt)
+  }
+}
+
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url)
-  const origin = request.headers.get('Origin')
+  const startedAt = performance.now()
+  const telemetry: RequestTelemetry = { upstreamOutcome: 'none', upstreamMs: null }
   const headers = new Headers({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Vary': 'Origin'
   })
-  if (origin === BROWSER_ORIGIN) {
-    headers.set('Access-Control-Allow-Origin', BROWSER_ORIGIN)
-    headers.set('Access-Control-Expose-Headers', 'Retry-After')
-  }
+  let routeName: RouteTemplate = 'other'
+  let method = 'unknown'
+  let code: string | null = null
+  let response: Response
   try {
+    const url = new URL(request.url)
+    routeName = routeTemplate(url.pathname)
+    method = request.method
+    const origin = request.headers.get('Origin')
+    if (origin === BROWSER_ORIGIN) {
+      headers.set('Access-Control-Allow-Origin', BROWSER_ORIGIN)
+      headers.set('Access-Control-Expose-Headers', 'Retry-After')
+    }
     if (origin !== null && origin !== BROWSER_ORIGIN) {
       throw new ApiError(403, 'origin_not_allowed', 'Browser origin not allowed')
     }
-    if (!['/health', '/weather', '/locations', '/ip-location'].includes(url.pathname)
-      && !LOCATION_ID_PATH.test(url.pathname)) {
+    if (routeName === 'other') {
       throw new ApiError(404, 'not_found', 'Endpoint not found')
     }
     if (request.method === 'OPTIONS') {
@@ -203,48 +254,63 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         throw new ApiError(403, 'preflight_not_allowed', 'Preflight request not allowed')
       }
       headers.set('Access-Control-Allow-Methods', 'GET')
-      return new Response(null, { status: 204, headers })
-    }
-    if (request.method !== 'GET') {
+      response = new Response(null, { status: 204, headers })
+    } else if (request.method !== 'GET') {
       headers.set('Allow', 'GET, OPTIONS')
       throw new ApiError(405, 'method_not_allowed', 'Only GET is supported')
-    }
-    if (url.pathname === '/health') {
+    } else if (url.pathname === '/health') {
       validateQuery(url.searchParams, [])
-      return Response.json({ status: 'ok' }, { headers })
-    }
-    if (url.pathname === '/ip-location') {
+      response = Response.json({ status: 'ok' }, { headers })
+    } else if (url.pathname === '/ip-location') {
       validateQuery(url.searchParams, [])
       await enforceRateLimit(request, env, false)
-      return Response.json(ipLocation(request), { headers })
+      response = Response.json(ipLocation(request), { headers })
+    } else {
+      const target = route(url)
+      await enforceRateLimit(request, env, true)
+      const payload = await fetchWithTelemetry(
+        target.upstream,
+        telemetry,
+        target.kind === 'location' ? { isNotFound: isLocationNotFound } : {}
+      )
+      let result: unknown
+      try {
+        if (isObject(payload) && 'error' in payload) throw new Error('Provider error payload')
+        result = target.kind === 'weather'
+          ? normalizeWeather(parseOpenMeteoWeatherResponse(payload))
+          : target.kind === 'search'
+            ? parseSearch(payload, target.maxResults)
+            : parseLocation(payload, target.id)
+      } catch {
+        telemetry.upstreamOutcome = 'invalid'
+        throw new ApiError(502, 'upstream_invalid', 'Invalid provider response')
+      }
+      response = Response.json(result, { headers })
     }
-    const target = route(url)
-    await enforceRateLimit(request, env, true)
-    const payload = await fetchJson(target.upstream, target.kind === 'location' ? { isNotFound: isLocationNotFound } : {})
-    let result: unknown
-    try {
-      if (isObject(payload) && 'error' in payload) throw new Error('Provider error payload')
-      result = target.kind === 'weather'
-        ? normalizeWeather(parseOpenMeteoWeatherResponse(payload))
-        : target.kind === 'search'
-          ? parseSearch(payload, target.maxResults)
-          : parseLocation(payload, target.id)
-    } catch {
-      throw new ApiError(502, 'upstream_invalid', 'Invalid provider response')
-    }
-    return Response.json(result, { headers })
   } catch (error) {
     const failure = error instanceof ApiError
       ? error
       : new ApiError(500, 'internal_error', 'Unexpected server error')
-    if (failure.status >= 500 || failure.code === 'upstream_rate_limited') {
-      console.error(JSON.stringify({ event: 'request_failed', code: failure.code, status: failure.status }))
-    }
+    code = failure.code
     if (failure.status === 429) headers.set('Retry-After', '60')
-    return Response.json({ error: { code: failure.code, message: failure.message } }, {
+    response = Response.json({ error: { code: failure.code, message: failure.message } }, {
       status: failure.status, headers
     })
   }
+  const summary = {
+    event: 'request',
+    route: routeName,
+    method,
+    status: response.status,
+    code,
+    duration_ms: elapsedMs(startedAt),
+    upstream_outcome: telemetry.upstreamOutcome,
+    upstream_ms: telemetry.upstreamMs,
+    version: env.CF_VERSION_METADATA?.id ?? 'local'
+  }
+  if (response.status >= 500) console.error(summary)
+  else console.log(summary)
+  return response
 }
 
 export default {
