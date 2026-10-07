@@ -1,0 +1,142 @@
+name: Deploy Cloudflare Worker
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    paths:
+      - workers/weather/**
+      - app/utils/provider-validation.ts
+      - app/utils/weather.ts
+      - app/types/weather.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Determine whether Worker validation is needed
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
+            workers/weather \
+            app/utils/provider-validation.ts app/utils/weather.ts app/types/weather.ts \
+            package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc \
+            eslint.config.mjs .github/workflows/deploy-worker.yml; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" -ne 1 ]]; then
+              exit "$status"
+            fi
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Worker validation not needed
+        if: steps.changes.outputs.needed == 'false'
+        run: echo "No Worker-related changes; validation not needed." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up pnpm
+        if: steps.changes.outputs.needed == 'true'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        if: steps.changes.outputs.needed == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            workers/weather/pnpm-lock.yaml
+
+      - name: Install repository dependencies
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint Worker
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm exec eslint workers/weather
+
+      - name: Install Worker dependencies
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm install --frozen-lockfile
+        working-directory: workers/weather
+
+      - name: Type-check Worker
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm typecheck
+        working-directory: workers/weather
+
+      - name: Test Worker
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm test
+        working-directory: workers/weather
+
+      - name: Build Worker without deploying
+        if: steps.changes.outputs.needed == 'true'
+        run: pnpm build
+        working-directory: workers/weather
+
+  deploy:
+    name: Deploy production Worker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: cloudflare-weather-worker-production
+      cancel-in-progress: false
+    environment:
+      name: production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Worker dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: workers/weather
+
+      - name: Deploy existing production Worker
+        run: |
+          commit_sha="${GITHUB_SHA::7}"
+          commit_subject="$(git log -1 --format=%s "$GITHUB_SHA")"
+          pnpm exec wrangler deploy --message "Deploy ${commit_sha}: ${commit_subject}"
+        working-directory: workers/weather
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
