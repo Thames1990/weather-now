@@ -154,6 +154,23 @@ describe('Worker API client', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it('uses the default cooldown when a 429 has a malformed Retry-After', async () => {
+    let now = 0
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(httpError(429, 'soon'))
+      .mockResolvedValueOnce({ results: [berlin] })
+    const api = createWorkerApi(baseUrl, fetch, () => now)
+
+    await expect(api.locations('Berlin')).rejects.toMatchObject({ reason: 'rate-limited', retryAt: 60_000 })
+    now = 59_999
+    await expect(api.locations('Berlin')).rejects.toBeInstanceOf(ApiUnavailableError)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    now = 60_000
+    await expect(api.locations('Berlin')).resolves.toEqual([berlin])
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('shares the rate-limit cooldown across Worker clients and operations', async () => {
     let now = 1_000
     const cooldown = { blockedUntil: 0, blockedReason: 'rate-limited' as const }
