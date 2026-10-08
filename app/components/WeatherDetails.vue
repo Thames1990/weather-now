@@ -14,7 +14,7 @@ defineProps<{
 </script>
 
 <template>
-  <UCard data-testid="weather-details-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-center' }">
+  <UCard data-testid="weather-details-card" class="dashboard:min-h-[196px]" :ui="{ root: 'overflow-visible flex flex-col', body: 'flex-1 flex flex-col justify-center' }">
     <template #header>
       <h2 class="text-lg font-semibold text-highlighted">
         <span v-if="isReady" class="wn-fade-in">{{ $t('outsideReally') }}</span>

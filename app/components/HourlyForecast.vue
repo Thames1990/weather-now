@@ -16,9 +16,9 @@ const visibleForecast = computed(() => props.forecast)
 </script>
 
 <template>
-  <UCard data-testid="hourly-forecast-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 flex min-w-0 overflow-x-auto' }">
+  <UCard data-testid="hourly-forecast-card" class="dashboard:min-h-[196px]" :ui="{ root: 'overflow-visible flex flex-col', body: 'flex-1 flex min-w-0 overflow-x-auto' }">
     <template #header>
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-highlighted">
           <span v-if="isReady" class="wn-fade-in">{{ $t('hourlyRhythm') }}</span>
           <USkeleton v-else as="span" class="my-1 block h-5 w-40" />

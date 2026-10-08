@@ -82,7 +82,7 @@ function closeWithFocusReturn() {
 
 watch(isOpen, closeWithFocusReturn)
 onMounted(() => {
-  mediaQuery = window.matchMedia('(min-width: 1024px)')
+  mediaQuery = window.matchMedia('(min-width: 64rem) and (min-height: 31rem) and (orientation: landscape)')
   updateBreakpoint(mediaQuery)
   mediaQuery.addEventListener('change', updateBreakpoint)
 })
@@ -206,13 +206,20 @@ const desktopContent = {
         </div>
       </template>
       <template #content>
-        <div :id="panelId" ref="panel">
+        <div :id="panelId" ref="panel" class="max-h-[min(75dvh,36rem)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto">
           <FavoritesManagerContent v-bind="managerProps()" v-on="managerListeners()" />
         </div>
       </template>
     </UPopover>
 
-    <UDrawer v-else v-model:open="isOpen" :title="$t('locations')" direction="bottom" :handle="true">
+    <UDrawer
+      v-else
+      v-model:open="isOpen"
+      :title="$t('locations')"
+      direction="bottom"
+      :handle="true"
+      :ui="{ content: 'mt-4 max-h-[calc(100dvh-1rem)] overflow-hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]' }"
+    >
       <UButton
         icon="i-lucide-search"
         color="primary"

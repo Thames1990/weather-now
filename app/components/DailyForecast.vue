@@ -39,7 +39,7 @@ const columns = computed<TableColumn<Row>[]>(() => [
 </script>
 
 <template>
-  <UCard data-testid="daily-forecast-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 overflow-x-auto' }">
+  <UCard data-testid="daily-forecast-card" class="dashboard:min-h-[196px]" :ui="{ root: 'overflow-visible flex flex-col', body: 'flex-1 overflow-x-auto' }">
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-highlighted">

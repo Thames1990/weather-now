@@ -23,8 +23,8 @@ function displayValue(value: number) {
 </script>
 
 <template>
-  <div data-testid="bar-chart-scroll" :tabindex="minColumnWidth ? 0 : undefined" :role="minColumnWidth ? 'group' : undefined" :aria-label="minColumnWidth ? summary : undefined" class="h-full min-h-0 w-full overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-primary">
-    <div class="flex h-full min-h-0 w-full items-end gap-1.5 sm:gap-2" :style="{ minWidth: `${values.length * (minColumnWidth ?? 0)}rem` }" role="img" :aria-label="summary">
+  <div data-testid="bar-chart-scroll" :tabindex="minColumnWidth ? 0 : undefined" :role="minColumnWidth ? 'group' : undefined" :aria-label="minColumnWidth ? summary : undefined" class="h-full min-h-40 w-full overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-primary">
+    <div class="flex h-full min-h-40 w-full items-end gap-1.5 sm:gap-2" :style="{ minWidth: `${values.length * (minColumnWidth ?? 0)}rem` }" role="img" :aria-label="summary">
       <div
         v-for="(value, index) in values"
         :key="index"

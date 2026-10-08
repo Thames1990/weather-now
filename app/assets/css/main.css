@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+@custom-variant dashboard (@media (min-width: 80rem) and (min-height: 56rem));
+@custom-variant toolbar (@media (min-width: 64rem) and (min-height: 31rem) and (orientation: landscape));
+@custom-variant short-landscape (@media (orientation: landscape) and (max-height: 30rem) and (min-width: 30rem));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }

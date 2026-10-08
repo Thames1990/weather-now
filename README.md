@@ -37,17 +37,59 @@ the existing error message and retry action.
 - Nuxt UI
 - Open-Meteo weather and geocoding services via the selected API mode
 
+## Responsive layout modes
+
+The layout follows the available viewport space rather than a device name.
+Dashboard and toolbar modes are selected independently and update when the
+window is resized or the device rotates.
+
+### Forecast layout
+
+| Mode | Viewport condition | Behavior |
+| --- | --- | --- |
+| Single-column | Width below `48rem` (768px) | Cards stack vertically and the page scrolls naturally. |
+| Two-column | Width at least `48rem` (768px), unless dense mode qualifies | Cards flow in two columns; the daily forecast and sun-hours chart span both columns. The page scrolls naturally. |
+| Dense dashboard | Width at least `80rem` (1280px) **and** height at least `56rem` (896px) | Cards use a 12-column grid with content-driven minimum row heights. The forecast area scrolls internally when content needs more space. |
+
+A wide but short window still uses the flowing layout: width alone does not
+activate the dense dashboard. Hourly forecasts and charts retain horizontal
+scrolling where needed, and chart value labels have reserved vertical space
+independent of the plot height.
+
+### Header and favorites
+
+| Mode | Viewport condition | Behavior |
+| --- | --- | --- |
+| Desktop toolbar | Landscape orientation, width at least `64rem` (1024px), **and** height at least `31rem` (496px) | Search, language, and theme controls are expanded. Favorites management opens in a bounded popover. |
+| Compact landscape header | Landscape orientation, width at least `30rem` (480px), **and** height at most `30rem` (480px) | Essential controls fit in one row, with language and theme under **Settings**. Outside dense mode, the header scrolls away naturally with the page. |
+| Default header | Neither toolbar condition matches | Search uses the mobile picker; language and theme are under **Settings**. |
+
+Whenever the desktop toolbar is inactive, favorites open in a fluid drawer
+that fills the available width and respects dynamic viewport height and
+safe-area insets. This includes portrait tablets, even when they are wider
+than 1024px.
+
+For example, a Pixel 7-sized viewport at 412 x 915 uses stacked cards and the
+default header; rotating to 915 x 412 gives it two columns and the compact
+header. An 11-inch iPad-sized viewport at 1194 x 834 uses two columns with the
+desktop toolbar, not the dense dashboard. A 1440 x 1000 landscape viewport
+qualifies for both the dense dashboard and desktop toolbar.
+
+Dimensions are CSS viewport sizes, not physical screen pixels. Pixel
+equivalents above assume 16px per `rem`; the implemented thresholds use `rem`.
+
 ## Favorites
 
-On desktop, use the visible **Search a city** field or its attached **Saved cities**
-button. Search shows autocomplete suggestions as you type; the button shows the saved-city count
-and opens only favorites management. On phones and portrait tablets, open **Search and saved
-cities** to access the same features. Search results appear in a separate section
+In desktop-toolbar mode, use the visible **Search a city** field or its attached
+**Saved cities** button. Search shows autocomplete suggestions as you type; the
+button shows the saved-city count and opens only favorites management. In other
+header modes, open **Search and saved cities** to access the same features.
+Search results appear in a separate section
 above the favorites controls and saved cities in the mobile picker. Selecting a
 city clears the search. Closing the mobile picker or pressing Escape in desktop
-search also clears it; leaving the desktop input preserves the query. On phones
-and portrait tablets, language and theme controls are available under
-**Settings**. Choose **System** to follow your device's light or dark appearance,
+search also clears it; leaving the desktop input preserves the query. Without
+the desktop toolbar, language and theme controls are available under **Settings**.
+Choose **System** to follow your device's light or dark appearance,
 or select **Light** or **Dark** to set it manually.
 
 Favorites automatically follow the selected language, including cities saved

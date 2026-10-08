@@ -46,7 +46,7 @@ defineEmits<{
 </script>
 
 <template>
-  <UCard data-testid="current-weather-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:overflow-hidden lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-center', footer: 'shrink-0' }">
+  <UCard data-testid="current-weather-card" class="dashboard:min-h-[196px]" :ui="{ root: 'overflow-visible flex flex-col', body: 'flex-1 flex flex-col justify-center', footer: 'shrink-0' }">
     <template #header>
       <div v-if="showSkeleton" class="flex items-start justify-between gap-3" aria-hidden="true">
         <div class="min-w-0 space-y-1.5">
