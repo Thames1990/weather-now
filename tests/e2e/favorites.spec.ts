@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page, Route } from '@playwright/test'
-import type { LocationResult, OpenMeteoWeatherResponse } from '../../app/types/weather'
-import { normalizeWeather } from '../../app/utils/weather'
+import type { LocationResult, OpenMeteoWeatherResponse } from '../../shared/weather/types'
+import { normalizeWeather } from '../../shared/weather/normalize'
 
 const cologne: LocationResult = {
   id: 2886242, name: 'Cologne', country: 'Germany', admin1: 'North Rhine-Westphalia',

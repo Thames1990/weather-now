@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import en from '../../i18n/locales/en.json'
 import de from '../../i18n/locales/de.json'
-import type { OpenMeteoWeatherResponse, WeatherResponse } from '~/types/weather'
-import { formatDay, formatHour, hourlyLabels, normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel, windDirection } from '~/utils/weather'
+import type { OpenMeteoWeatherResponse, WeatherResponse } from '../../shared/weather/types'
+import { normalizeWeather } from '../../shared/weather/normalize'
+import { formatDay, formatHour, hourlyLabels, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel, windDirection } from '~/utils/weather'
 
 function forecast(currentTime: string, times: string[]): WeatherResponse {
   return {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleRequest } from '../src/index'
 import type { Env } from '../src/index'
 import { UPSTREAM_TIMEOUT_MS } from '../src/upstream'
-import { normalizeWeather } from '../../../app/utils/weather'
+import { normalizeWeather } from '../../../shared/weather/normalize'
 
 const timestamp = 1_790_000_000
 const weather = {

@@ -1,4 +1,4 @@
-import { parseIpLocationResult, type IpLocationResult } from '~/utils/provider-validation'
+import { parseIpLocationResult, type IpLocationResult } from '#shared/weather/provider-validation'
 import { fetchAndParseProviderResponse } from '../utils/provider'
 
 export default defineEventHandler(async (): Promise<IpLocationResult> => {

@@ -1,5 +1,5 @@
 import type { LocationResult, WeatherResponse } from '~/types/weather'
-import { parseGeocodingResults, parseIpLocationResult } from '~/utils/provider-validation'
+import { parseGeocodingResults, parseIpLocationResult } from '#shared/weather/provider-validation'
 
 export type WorkerFetchOptions = {
   query: Record<string, string>

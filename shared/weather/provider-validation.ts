@@ -1,4 +1,4 @@
-import type { LocationResult, OpenMeteoWeatherResponse } from '~/types/weather'
+import type { LocationResult, OpenMeteoWeatherResponse } from './types'
 
 type ProviderObject = Record<string, unknown>
 

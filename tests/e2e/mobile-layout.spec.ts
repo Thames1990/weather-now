@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { WeatherResponse } from '../../app/types/weather'
+import type { WeatherResponse } from '../../shared/weather/types'
 
 const cardTestIds = [
   'current-weather-card',

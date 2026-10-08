@@ -1,4 +1,4 @@
-import { isValidCoordinates } from '~/utils/provider-validation'
+import { isValidCoordinates } from '#shared/weather/provider-validation'
 
 export function parseCoordinates(latitude: unknown, longitude: unknown): { latitude: number; longitude: number } {
   const parsedLatitude = Number(latitude)

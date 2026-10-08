@@ -3,8 +3,5 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   tsconfig: fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
-  resolve: {
-    alias: { '~': fileURLToPath(new URL('../../app', import.meta.url)) }
-  },
   test: { environment: 'node', include: ['test/**/*.test.ts'] }
 })

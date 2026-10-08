@@ -1,6 +1,6 @@
-import type { OpenMeteoWeatherResponse } from '~/types/weather'
-import { parseOpenMeteoWeatherResponse } from '~/utils/provider-validation'
-import { normalizeWeather } from '~/utils/weather'
+import type { OpenMeteoWeatherResponse } from '#shared/weather/types'
+import { parseOpenMeteoWeatherResponse } from '#shared/weather/provider-validation'
+import { normalizeWeather } from '#shared/weather/normalize'
 import { fetchAndParseProviderResponse, parseCoordinates } from '../utils/provider'
 
 const currentParams = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'

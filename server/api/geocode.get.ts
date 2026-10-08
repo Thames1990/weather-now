@@ -1,5 +1,5 @@
-import type { LocationResult } from '~/types/weather'
-import { parseGeocodingResults } from '~/utils/provider-validation'
+import type { LocationResult } from '#shared/weather/types'
+import { parseGeocodingResults } from '#shared/weather/provider-validation'
 import { fetchAndParseProviderResponse } from '../utils/provider'
 
 export default defineEventHandler(async (event): Promise<{ results: LocationResult[] }> => {

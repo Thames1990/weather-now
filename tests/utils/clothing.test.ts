@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { clothingRecommendation } from '~/utils/clothing'
-import type { HourlyForecast, WeatherResponse } from '~/types/weather'
+import type { WeatherResponse } from '../../shared/weather/types'
+import type { HourlyForecast } from '~/types/weather'
 
 function current(overrides: Partial<WeatherResponse['current']> = {}): WeatherResponse['current'] {
   return {

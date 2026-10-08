@@ -9,9 +9,7 @@ on:
       - main
     paths:
       - workers/weather/**
-      - app/utils/provider-validation.ts
-      - app/utils/weather.ts
-      - app/types/weather.ts
+      - shared/weather/**
   workflow_dispatch:
 
 permissions:
@@ -40,7 +38,7 @@ jobs:
             echo "needed=true" >> "$GITHUB_OUTPUT"
           elif git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
             workers/weather \
-            app/utils/provider-validation.ts app/utils/weather.ts app/types/weather.ts \
+            shared/weather \
             package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc \
             eslint.config.mjs .github/workflows/deploy-worker.yml; then
             echo "needed=false" >> "$GITHUB_OUTPUT"

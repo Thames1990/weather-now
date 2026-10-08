@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type { OpenMeteoWeatherResponse } from '../../app/types/weather'
-import { normalizeWeather } from '../../app/utils/weather'
+import type { OpenMeteoWeatherResponse } from '../../shared/weather/types'
+import { normalizeWeather } from '../../shared/weather/normalize'
 
 function response(currentTime: string, hourlyTimes: string[]): OpenMeteoWeatherResponse {
   const unix = (time: string) => Date.parse(time) / 1000
