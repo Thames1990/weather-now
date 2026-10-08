@@ -25,6 +25,10 @@ const place = { id: 2950159, name: 'Berlin', country: 'Germany', latitude: 52.52
 const fetchMock = vi.fn<typeof fetch>()
 const clientLimit = vi.fn<Env['CLIENT_RATE_LIMITER']['limit']>()
 const upstreamLimit = vi.fn<Env['UPSTREAM_RATE_LIMITER']['limit']>()
+const cacheEntries = new Map<string, { response: Response; expiresAt: number }>()
+const cacheMatchMock = vi.fn<Cache['match']>()
+const cachePutMock = vi.fn<Cache['put']>()
+const cacheMock: Pick<Cache, 'match' | 'put'> = { match: cacheMatchMock, put: cachePutMock }
 const env: Env = {
   CLIENT_RATE_LIMITER: { limit: clientLimit },
   UPSTREAM_RATE_LIMITER: { limit: upstreamLimit },
@@ -35,8 +39,25 @@ const request = (path: string, init?: RequestInit) => new Request(`https://api.m
 beforeEach(() => {
   clientLimit.mockResolvedValue({ success: true })
   upstreamLimit.mockResolvedValue({ success: true })
+  cacheEntries.clear()
+  cacheMatchMock.mockImplementation(async key => {
+    const cacheKey = key instanceof Request ? key.url : String(key)
+    const entry = cacheEntries.get(cacheKey)
+    if (!entry || entry.expiresAt <= Date.now()) {
+      cacheEntries.delete(cacheKey)
+      return undefined
+    }
+    return entry.response.clone()
+  })
+  cachePutMock.mockImplementation(async (key, response) => {
+    const cacheKey = key instanceof Request ? key.url : String(key)
+    const maxAge = Number(/max-age=(\d+)/.exec(response.headers.get('Cache-Control') ?? '')?.[1] ?? 0)
+    cacheEntries.set(cacheKey, { response: response.clone(), expiresAt: Date.now() + maxAge * 1000 })
+  })
+  vi.stubGlobal('caches', { default: cacheMock })
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => {
@@ -56,7 +77,7 @@ describe('Worker contract', () => {
     const summary = vi.mocked(console.log).mock.calls[0]?.[0]
     expect(Object.keys(summary)).toEqual([
       'event', 'route', 'method', 'status', 'code', 'duration_ms',
-      'upstream_outcome', 'upstream_ms', 'version'
+      'upstream_outcome', 'upstream_ms', 'cache_outcome', 'version'
     ])
     expect(summary).toEqual({
       event: 'request',
@@ -67,6 +88,7 @@ describe('Worker contract', () => {
       duration_ms: expect.any(Number),
       upstream_outcome: 'ok',
       upstream_ms: expect.any(Number),
+      cache_outcome: 'miss',
       version: 'test-version'
     })
     expect(JSON.stringify(summary)).not.toMatch(/52\.52|13\.40|latitude|longitude|api\.open-meteo\.com/)
@@ -139,6 +161,88 @@ describe('Worker contract', () => {
     expect(upstream.searchParams.get('longitude')).toBe('13.4')
     expect(options?.redirect).toBe('manual')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves a short-lived weather cache hit without changing client cache headers', async () => {
+    fetchMock.mockResolvedValue(Response.json(weather))
+    const path = '/weather?latitude=52.52&longitude=13.40'
+    const first = await handleRequest(request(path), env)
+    const second = await handleRequest(request(path), env)
+
+    expect(await first.json()).toEqual(normalizeWeather(weather))
+    expect(await second.json()).toEqual(normalizeWeather(weather))
+    expect(first.headers.get('Cache-Control')).toBe('no-store')
+    expect(second.headers.get('Cache-Control')).toBe('no-store')
+    expect(cachePutMock).toHaveBeenCalledTimes(1)
+    expect(cachePutMock.mock.calls[0]?.[1].headers.get('Cache-Control')).toBe('public, max-age=60')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(clientLimit).toHaveBeenCalledTimes(2)
+    expect(upstreamLimit).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(console.log).mock.calls[1]?.[0]).toMatchObject({
+      upstream_outcome: 'none', upstream_ms: null, cache_outcome: 'hit'
+    })
+  })
+
+  it('separates weather cache entries by coordinates', async () => {
+    fetchMock.mockResolvedValue(Response.json(weather))
+    await handleRequest(request('/weather?latitude=52.52&longitude=13.40'), env)
+    await handleRequest(request('/weather?latitude=52.52&longitude=13.41'), env)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('separates geocoding cache entries by query, language, count, and location ID', async () => {
+    fetchMock.mockImplementation(async input => {
+      const upstream = new URL(String(input))
+      if (upstream.pathname.endsWith('/search')) return Response.json({ results: [place] })
+      return Response.json({ ...place, id: Number(upstream.searchParams.get('id')) })
+    })
+    const paths = [
+      '/locations?q=Berlin&language=en&count=5',
+      '/locations?q=Berlin&language=de&count=5',
+      '/locations?q=Berlin&language=en&count=1',
+      '/locations/2950159?language=en',
+      '/locations/2950159?language=de',
+      '/locations/2950160?language=en'
+    ]
+    for (const path of paths) expect((await handleRequest(request(path), env)).status).toBe(200)
+
+    expect(fetchMock).toHaveBeenCalledTimes(paths.length)
+    expect(cachePutMock.mock.calls.map(([, response]) => response.headers.get('Cache-Control')))
+      .toEqual(paths.map(() => 'public, max-age=300'))
+  })
+
+  it('expires cached weather after its configured TTL', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-08T12:00:00Z'))
+    fetchMock.mockResolvedValue(Response.json(weather))
+    const path = '/weather?latitude=52.52&longitude=13.40'
+    await handleRequest(request(path), env)
+    vi.setSystemTime(new Date('2026-10-08T12:00:59.999Z'))
+    await handleRequest(request(path), env)
+    vi.setSystemTime(new Date('2026-10-08T12:01:00Z'))
+    await handleRequest(request(path), env)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('serves valid provider data when cache reads or writes fail', async () => {
+    cacheMatchMock.mockRejectedValueOnce(new Error('cache read detail'))
+    cachePutMock.mockRejectedValueOnce(new Error('cache write detail'))
+    fetchMock.mockResolvedValue(Response.json(weather))
+
+    const response = await handleRequest(request('/weather?latitude=52.52&longitude=13.40'), env)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(normalizeWeather(weather))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(console.warn).toHaveBeenNthCalledWith(1, {
+      event: 'cache_error', operation: 'read', route: '/weather'
+    })
+    expect(console.warn).toHaveBeenNthCalledWith(2, {
+      event: 'cache_error', operation: 'write', route: '/weather'
+    })
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toMatchObject({ cache_outcome: 'error' })
   })
 
   it.each([{}, { generationtime_ms: 0.5 }, { results: [] }, { results: null }])('returns empty search results normally: %j', async (payload) => {
@@ -412,6 +516,8 @@ describe('IP location', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     expect(await response.json()).toEqual({ name: 'Berlin', region: 'Land Berlin', country: 'DE', latitude: 52.52437, longitude: 13.41053 })
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(cacheMatchMock).not.toHaveBeenCalled()
+    expect(cachePutMock).not.toHaveBeenCalled()
     expect(clientLimit).toHaveBeenCalledWith({ key: '192.0.2.1' })
     expect(upstreamLimit).not.toHaveBeenCalled()
   })

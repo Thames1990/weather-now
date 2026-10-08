@@ -64,7 +64,15 @@ checks. The frontend uses this Worker in its `worker` API mode; see the
 
 Only GET and restricted OPTIONS preflight are supported. Unknown paths return
 404; unsupported methods return 405 with `Allow: GET, OPTIONS`.
-All responses use `Cache-Control: no-store`. No caching or retries are enabled.
+All responses use `Cache-Control: no-store`. Successful `/weather` responses
+are cached internally for 60 seconds, and successful `/locations` and
+`/locations/{id}` responses for 300 seconds. This uses the Cloudflare Cache API
+in the data center handling each request; entries are not replicated globally
+and may be evicted sooner. Cache keys use the complete validated request URL,
+including coordinates, query, language, count, or location ID. Client responses
+and errors remain `no-store`, and `/ip-location` is never cached. Client rate
+limits still apply to cache hits; the aggregate provider limit applies only
+when a provider request is needed.
 Only `https://weather.mohrworks.com` receives CORS permission, without
 credentials or custom request headers; that origin can read the `Retry-After`
 response header. Other browser origins receive 403.
@@ -247,8 +255,9 @@ Missing/failed bindings cause 503: there is no unprotected fallback.
 not global counters or exact provider-quota accounting.** Distributed traffic
 can exceed them globally; 60/minute sustained can also exceed daily quotas.
 They provide practical initial burst protection, not a guarantee against
-distributed abuse or quota exhaustion. No caching or distributed state layer
-is added. Before deployment, reserve unique namespace IDs `1001` and `1002`
+distributed abuse or quota exhaustion. The short-lived response cache is also
+local to each Cloudflare data center and is not shared quota accounting.
+Before deployment, reserve unique namespace IDs `1001` and `1002`
 in the account (change them if already used), confirm binding availability,
 and arrange traffic/quota monitoring plus an operator who can disable the
 data endpoints or roll back if the budget is at risk. A globally guaranteed
@@ -276,9 +285,10 @@ Metadata; local runs use `local`.
 
 Each handled request emits one allowlisted `event: "request"` summary with
 `route`, `method`, `status`, `code`, `duration_ms`, `upstream_outcome`,
-`upstream_ms`, and deployment `version`. Routes use templates, including
-`/locations/:id`. The application summary contains no client IP, request body,
-headers, provider payload, coordinate, search term, or raw location ID.
+`upstream_ms`, `cache_outcome`, and deployment `version`. Routes use templates,
+including `/locations/:id`. The application summary contains no client IP,
+request body, headers, provider payload, coordinate, search term, or raw
+location ID.
 Responses below 500 use `console.log`; 500+ use `console.error` with a safe
 message keyed by the stable error code, the same summary fields, and stack
 frames from the caught error. The caught error message is not copied into the

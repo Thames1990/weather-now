@@ -9,6 +9,8 @@ export interface Env {
 }
 
 const BROWSER_ORIGIN = 'https://weather.mohrworks.com'
+const WEATHER_CACHE_TTL_SECONDS = 60
+const GEOCODING_CACHE_TTL_SECONDS = 300
 const current = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
 const hourly = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m'
 const daily = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
@@ -165,12 +167,15 @@ function ipLocation(request: Request): Record<string, string | number> {
   return result
 }
 
-async function enforceRateLimit(request: Request, env: Env, upstream: boolean): Promise<void> {
+async function enforceRateLimit(request: Request, env: Env, scope: 'client' | 'upstream'): Promise<void> {
   try {
-    // Cloudflare supplies this header at the edge; never use caller-supplied X-Forwarded-For.
-    const key = request.headers.get('CF-Connecting-IP') || 'anonymous'
-    if (!(await env.CLIENT_RATE_LIMITER.limit({ key })).success
-      || (upstream && !(await env.UPSTREAM_RATE_LIMITER.limit({ key: 'all-provider-requests' })).success)) {
+    const result = scope === 'client'
+      ? await env.CLIENT_RATE_LIMITER.limit({
+          // Cloudflare supplies this header at the edge; never use caller-supplied X-Forwarded-For.
+          key: request.headers.get('CF-Connecting-IP') || 'anonymous'
+        })
+      : await env.UPSTREAM_RATE_LIMITER.limit({ key: 'all-provider-requests' })
+    if (!result.success) {
       throw new ApiError(429, 'rate_limited', 'Request limit reached')
     }
   } catch (error) {
@@ -180,10 +185,12 @@ async function enforceRateLimit(request: Request, env: Env, upstream: boolean): 
 }
 
 type UpstreamOutcome = 'ok' | 'timeout' | 'status' | 'invalid' | 'rate_limited' | 'none'
+type CacheOutcome = 'hit' | 'miss' | 'error' | 'none'
 
 interface RequestTelemetry {
   upstreamOutcome: UpstreamOutcome
   upstreamMs: number | null
+  cacheOutcome: CacheOutcome
 }
 
 interface RequestSummary {
@@ -195,6 +202,7 @@ interface RequestSummary {
   duration_ms: number
   upstream_outcome: UpstreamOutcome
   upstream_ms: number | null
+  cache_outcome: CacheOutcome
   version: string
 }
 
@@ -241,9 +249,25 @@ async function fetchWithTelemetry(url: URL, telemetry: RequestTelemetry, options
   }
 }
 
-export async function handleRequest(request: Request, env: Env): Promise<Response> {
+function cacheFailure(operation: 'read' | 'write', routeName: RouteTemplate): void {
+  console.warn({ event: 'cache_error', operation, route: routeName })
+}
+
+async function cacheResponse(
+  cache: Cache,
+  key: Request,
+  response: Response,
+  context: ExecutionContext | undefined,
+  routeName: RouteTemplate
+): Promise<void> {
+  const write = cache.put(key, response).catch(() => cacheFailure('write', routeName))
+  if (context) context.waitUntil(write)
+  else await write
+}
+
+export async function handleRequest(request: Request, env: Env, context?: ExecutionContext): Promise<Response> {
   const startedAt = performance.now()
-  const telemetry: RequestTelemetry = { upstreamOutcome: 'none', upstreamMs: null }
+  const telemetry: RequestTelemetry = { upstreamOutcome: 'none', upstreamMs: null, cacheOutcome: 'none' }
   const headers = new Headers({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -285,29 +309,53 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = Response.json({ status: 'ok' }, { headers })
     } else if (url.pathname === '/ip-location') {
       validateQuery(url.searchParams, [])
-      await enforceRateLimit(request, env, false)
+      await enforceRateLimit(request, env, 'client')
       response = Response.json(ipLocation(request), { headers })
     } else {
       const target = route(url)
-      await enforceRateLimit(request, env, true)
-      const payload = await fetchWithTelemetry(
-        target.upstream,
-        telemetry,
-        target.kind === 'location' ? { isNotFound: isLocationNotFound } : {}
-      )
-      let result: unknown
+      await enforceRateLimit(request, env, 'client')
+      const cacheKey = new Request(request.url, { method: 'GET' })
+      let cache: Cache | undefined
+      let cached: Response | undefined
       try {
-        if (isObject(payload) && 'error' in payload) throw new Error('Provider error payload')
-        result = target.kind === 'weather'
-          ? normalizeWeather(parseOpenMeteoWeatherResponse(payload))
-          : target.kind === 'search'
-            ? parseSearch(payload, target.maxResults)
-            : parseLocation(payload, target.id)
+        cache = caches.default
+        cached = (await cache.match(cacheKey)) ?? undefined
       } catch {
-        telemetry.upstreamOutcome = 'invalid'
-        throw new ApiError(502, 'upstream_invalid', 'Invalid provider response')
+        telemetry.cacheOutcome = 'error'
+        cacheFailure('read', routeName)
       }
-      response = Response.json(result, { headers })
+      if (cached) {
+        telemetry.cacheOutcome = 'hit'
+        response = new Response(cached.body, { status: cached.status, headers })
+      } else {
+        if (telemetry.cacheOutcome !== 'error') telemetry.cacheOutcome = 'miss'
+        await enforceRateLimit(request, env, 'upstream')
+        const payload = await fetchWithTelemetry(
+          target.upstream,
+          telemetry,
+          target.kind === 'location' ? { isNotFound: isLocationNotFound } : {}
+        )
+        let result: unknown
+        try {
+          if (isObject(payload) && 'error' in payload) throw new Error('Provider error payload')
+          result = target.kind === 'weather'
+            ? normalizeWeather(parseOpenMeteoWeatherResponse(payload))
+            : target.kind === 'search'
+              ? parseSearch(payload, target.maxResults)
+              : parseLocation(payload, target.id)
+        } catch {
+          telemetry.upstreamOutcome = 'invalid'
+          throw new ApiError(502, 'upstream_invalid', 'Invalid provider response')
+        }
+        response = Response.json(result, { headers })
+        if (cache) {
+          const ttl = target.kind === 'weather' ? WEATHER_CACHE_TTL_SECONDS : GEOCODING_CACHE_TTL_SECONDS
+          const cacheEntry = Response.json(result, {
+            headers: { 'Cache-Control': `public, max-age=${ttl}` }
+          })
+          await cacheResponse(cache, cacheKey, cacheEntry, context, routeName)
+        }
+      }
     }
   } catch (error) {
     errorCause = error
@@ -329,6 +377,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     duration_ms: elapsedMs(startedAt),
     upstream_outcome: telemetry.upstreamOutcome,
     upstream_ms: telemetry.upstreamMs,
+    cache_outcome: telemetry.cacheOutcome,
     version: env.CF_VERSION_METADATA?.id ?? 'local'
   }
   if (response.status >= 500) {
