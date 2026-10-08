@@ -9,7 +9,6 @@ const props = defineProps<{
 const gradientId = `line-chart-gradient-${useId()}`
 const viewBoxWidth = 100
 const viewBoxHeight = 36
-const topPadding = 7 // reserve headroom so the always-visible value labels never clip above the chart
 
 const min = computed(() => Math.min(...props.values, 0))
 const max = computed(() => Math.max(...props.values, 1))
@@ -17,7 +16,7 @@ const range = computed(() => Math.max(max.value - min.value, 1))
 
 const points = computed(() => props.values.map((value, index) => {
   const x = ((index + 0.5) / props.values.length) * viewBoxWidth
-  const y = topPadding + (viewBoxHeight - topPadding) - ((value - min.value) / range.value) * (viewBoxHeight - topPadding)
+  const y = viewBoxHeight - ((value - min.value) / range.value) * viewBoxHeight
   return { x, y, value }
 }))
 
@@ -64,11 +63,12 @@ function markerStyle(point: { x: number, y: number }, index: number) {
 </script>
 
 <template>
-  <div data-testid="line-chart-scroll" tabindex="0" role="group" :aria-label="summary" class="h-full min-h-0 w-full overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-primary">
-    <div class="flex h-full min-h-0 w-full flex-col" :style="{ minWidth: `${values.length * 3.5}rem` }">
-      <div class="relative min-h-0 flex-1">
+  <div data-testid="line-chart-scroll" tabindex="0" role="group" :aria-label="summary" class="h-full min-h-40 w-full overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-primary">
+    <div class="flex h-full min-h-40 w-full flex-col pt-10 pb-2" :style="{ minWidth: `${values.length * 3.5}rem` }">
+      <div class="relative min-h-20 flex-1">
         <div
           v-if="active"
+          data-testid="line-chart-tooltip"
           class="pointer-events-none absolute z-10 rounded-md bg-inverted px-2 py-1 text-xs font-medium whitespace-nowrap text-inverted shadow-sm"
           :style="labelStyle(active, activeIndex!, true)"
         >
@@ -78,6 +78,7 @@ function markerStyle(point: { x: number, y: number }, index: number) {
           v-for="(point, index) in points"
           v-show="activeIndex !== index"
           :key="index"
+          data-testid="line-chart-value"
           class="pointer-events-none absolute z-10 whitespace-nowrap text-[0.65rem] font-semibold text-highlighted"
           :style="labelStyle(point, index)"
         >
@@ -111,7 +112,7 @@ function markerStyle(point: { x: number, y: number }, index: number) {
           :style="markerStyle(point, index)"
         />
       </div>
-      <div class="mt-2 flex shrink-0 text-xs text-muted">
+      <div class="mt-3 flex shrink-0 text-xs text-muted">
         <span v-for="(label, index) in labels" :key="index" data-testid="line-chart-label" class="min-w-0 flex-1 text-center whitespace-nowrap">{{ label }}</span>
       </div>
     </div>

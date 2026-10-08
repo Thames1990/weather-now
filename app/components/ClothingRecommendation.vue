@@ -26,9 +26,9 @@ const badgeLabel = computed(() => recommendation.value.accent === 'wet' ? t('rai
 </script>
 
 <template>
-  <UCard data-testid="clothing-card" class="lg:h-full lg:min-h-[196px]" :ui="{ root: 'overflow-visible lg:h-full flex flex-col', body: 'flex-1 flex flex-col justify-between gap-3' }">
+  <UCard data-testid="clothing-card" class="dashboard:min-h-[196px]" :ui="{ root: 'overflow-visible flex flex-col', body: 'flex-1 flex flex-col justify-between gap-3' }">
     <template #header>
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-highlighted">
           <span v-if="isReady" class="wn-fade-in">{{ $t('dressForDay') }}</span>
           <USkeleton v-else as="span" class="my-1 block h-5 w-36" />

@@ -114,7 +114,7 @@ function cancelDrag(event: PointerEvent) {
 </script>
 
 <template>
-  <div class="max-h-[min(75vh,36rem)] w-full overflow-y-auto sm:w-[min(24rem,calc(100vw-2rem))]">
+  <div class="min-h-0 w-full overflow-y-auto">
     <div v-if="$slots.search" class="border-b border-default p-3">
       <slot name="search" />
     </div>

@@ -114,31 +114,31 @@ watch(savedLanguage, (value) => {
         <span class="min-h-5 text-sm text-muted">{{ $t('loadingForecast') }}</span>
       </div>
       <UDashboardGroup
-        class="wn-dashboard w-full max-w-none motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out"
+        class="wn-dashboard relative min-h-dvh w-full max-w-none overflow-visible dashboard:fixed dashboard:overflow-hidden motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out"
         :class="isDashboardVisible ? 'visible opacity-100' : 'invisible opacity-0'"
         :inert="!isDashboardVisible"
         :aria-busy="!isDashboardVisible"
       >
-        <UDashboardPanel :ui="{ root: `${panelThemeClass} w-full rounded-2xl backdrop-blur-sm`, body: 'js-dashboard-scroll grid min-h-0 w-full grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:grid-cols-12 lg:auto-rows-[minmax(196px,auto)] lg:gap-3 lg:p-3 lg:overflow-hidden' }">
+        <UDashboardPanel :ui="{ root: `${panelThemeClass} min-h-dvh w-full rounded-2xl backdrop-blur-sm dashboard:min-h-0 dashboard:h-full`, body: 'js-dashboard-scroll grid flex-none min-h-0 w-full grid-cols-1 gap-4 overflow-visible p-3 sm:p-4 md:grid-cols-2 dashboard:flex-1 dashboard:grid-cols-12 dashboard:auto-rows-[minmax(max-content,auto)] dashboard:gap-3 dashboard:p-3 dashboard:overflow-y-auto dashboard:overflow-x-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]' }">
           <template #header>
-            <header data-testid="app-navbar" class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-slate-200/80 bg-white/80 px-3 py-2 dark:border-slate-800/80 dark:bg-slate-900/90 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-4 lg:px-4">
+            <header data-testid="app-navbar" class="grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-slate-200/80 bg-white/80 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] dark:border-slate-800/80 dark:bg-slate-900/90 toolbar:grid-cols-[auto_minmax(0,1fr)_auto] toolbar:gap-x-4 toolbar:pl-[max(1rem,env(safe-area-inset-left))] toolbar:pr-[max(1rem,env(safe-area-inset-right))] short-landscape:grid-cols-[auto_minmax(0,1fr)_auto] short-landscape:gap-x-2 short-landscape:pt-[max(0.25rem,env(safe-area-inset-top))] short-landscape:pb-1">
               <div class="flex min-w-0 items-center gap-2">
                 <UIcon name="i-lucide-cloud-sun" class="size-6 shrink-0 text-primary" aria-hidden="true" />
                 <h1 class="truncate font-semibold text-highlighted">{{ $t('brand') }}</h1>
               </div>
 
-              <div class="flex items-center justify-end gap-1.5 lg:col-start-3 lg:row-start-1 lg:gap-2">
+              <div class="flex items-center justify-end gap-1.5 toolbar:col-start-3 toolbar:row-start-1 toolbar:gap-2 short-landscape:col-start-3 short-landscape:row-start-1">
                 <UTooltip :text="$t('useCurrentLocation')">
                   <UButton icon="i-lucide-locate-fixed" color="neutral" variant="ghost" :class="headerIconButtonClass" :aria-label="$t('useCurrentLocation')" @click="useCurrentLocation" />
                 </UTooltip>
-                <div class="hidden items-center gap-2 lg:flex">
+                <div class="hidden items-center gap-2 toolbar:flex">
                   <USelect v-if="isReady" v-model="locale" :items="languageOptions" value-key="value" size="sm" class="w-24" :ui="{ base: 'min-h-[48px]' }" :aria-label="$t('language')" />
                   <USkeleton v-else class="h-[48px] w-24 rounded-md" />
                   <ThemeSelector v-if="isReady" v-model="colorMode.preference" class="w-60" :options="themeOptions" :label="$t('theme')" />
                   <USkeleton v-else class="h-[50px] w-60 rounded-lg" />
                 </div>
 
-                <UPopover class="lg:hidden" :content="{ side: 'bottom', align: 'end' }">
+                <UPopover class="toolbar:hidden" :content="{ side: 'bottom', align: 'end' }">
                   <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :class="headerIconButtonClass" :aria-label="$t('settings')" />
                   <template #content>
                     <div class="grid min-w-52 gap-3 p-3">
@@ -152,7 +152,7 @@ watch(savedLanguage, (value) => {
               </div>
 
               <FavoritesMenu
-                class="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-1"
+                class="col-span-2 min-w-0 toolbar:col-span-1 toolbar:col-start-2 toolbar:row-start-1 short-landscape:col-span-1 short-landscape:col-start-2 short-landscape:row-start-1"
                 :favorites="favorites"
                 :current-location="displayedLocation"
                 :has-current-location="isReady && Boolean(current) && selectedLocation.name !== LOCATING_LOCATION_NAME && selectedLocation.name !== LOADING_LOCATION_NAME"
@@ -198,7 +198,7 @@ watch(savedLanguage, (value) => {
 
           <template #body>
             <CurrentWeatherPanel
-              class="min-w-0 col-span-1 lg:col-span-4"
+              class="min-w-0 col-span-1 dashboard:col-span-4"
               :location="displayedLocation"
               :current="current"
               :timezone="weather?.timezone"
@@ -209,13 +209,13 @@ watch(savedLanguage, (value) => {
               :error-message="errorMessage"
               @retry="fetchWeather(selectedLocation)"
             />
-            <ClothingRecommendation class="min-w-0 col-span-1 lg:col-span-5" :current="current" :hourly="hourlyForecast" :gender="clothingGender" @update:gender="updateClothingGender" />
-            <WeatherDetails class="min-w-0 col-span-1 lg:col-span-3" :current="current" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
+            <ClothingRecommendation class="min-w-0 col-span-1 dashboard:col-span-5" :current="current" :hourly="hourlyForecast" :gender="clothingGender" @update:gender="updateClothingGender" />
+            <WeatherDetails class="min-w-0 col-span-1 dashboard:col-span-3" :current="current" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" :sunset="weather?.daily.sunset[0]" />
 
-            <HourlyForecast class="min-w-0 col-span-1 lg:col-span-5" :forecast="hourlyForecast" :labels="hourlyTimeLabels" :timezone="weather?.timezone" :is-refreshing="isRefreshing" />
-            <DailyForecast class="min-w-0 col-span-1 lg:col-span-7" :forecast="dailyForecast" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" />
+            <HourlyForecast class="min-w-0 col-span-1 dashboard:col-span-5" :forecast="hourlyForecast" :labels="hourlyTimeLabels" :timezone="weather?.timezone" :is-refreshing="isRefreshing" />
+            <DailyForecast class="min-w-0 col-span-1 md:col-span-2 dashboard:col-span-7" :forecast="dailyForecast" :timezone="weather?.timezone" :sunrise="weather?.daily.sunrise[0]" />
 
-            <UCard data-testid="temperature-trend-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
+            <UCard data-testid="temperature-trend-card" class="min-w-0 col-span-1 min-h-[220px] dashboard:col-span-4" :ui="{ root: 'overflow-visible flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
                 <h2 class="text-lg font-semibold text-highlighted">
                   <span v-if="isReady" class="wn-fade-in">{{ $t('temperatureTrend') }}</span>
@@ -226,7 +226,7 @@ watch(savedLanguage, (value) => {
               <ChartSkeleton v-else variant="line" />
             </UCard>
 
-            <UCard data-testid="precipitation-outlook-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
+            <UCard data-testid="precipitation-outlook-card" class="min-w-0 col-span-1 min-h-[220px] dashboard:col-span-4" :ui="{ root: 'overflow-visible flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
                 <h2 class="text-lg font-semibold text-highlighted">
                   <span v-if="isReady" class="wn-fade-in">{{ $t('precipitationOutlook') }}</span>
@@ -246,7 +246,7 @@ watch(savedLanguage, (value) => {
               <ChartSkeleton v-else :bars="6" />
             </UCard>
 
-            <UCard data-testid="sun-hours-card" class="min-w-0 col-span-1 min-h-[220px] lg:col-span-4 lg:min-h-0" :ui="{ root: 'overflow-visible h-full lg:overflow-hidden flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
+            <UCard data-testid="sun-hours-card" class="min-w-0 col-span-1 min-h-[220px] md:col-span-2 dashboard:col-span-4" :ui="{ root: 'overflow-visible flex min-w-0 flex-col', body: 'flex-1 min-h-0' }">
               <template #header>
                 <h2 class="text-lg font-semibold text-highlighted">
                   <span v-if="isReady" class="wn-fade-in">{{ $t('sunHoursThisWeek') }}</span>

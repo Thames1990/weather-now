@@ -481,7 +481,8 @@ test.describe('responsive dashboard layout', () => {
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false)
   })
 
-  test('scrolls the dashboard on small viewports and fits without scrolling on desktop', async ({ page }) => {
+  test('uses page scrolling outside the dense dashboard and keeps all content reachable', async ({ page }) => {
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
     await page.goto('/', { waitUntil: 'networkidle' })
 
     const viewport = page.viewportSize()
@@ -490,17 +491,227 @@ test.describe('responsive dashboard layout', () => {
     const scrollRegion = page.locator('.js-dashboard-scroll')
     await expect(scrollRegion).toBeVisible()
 
-    const { scrollHeight, clientHeight } = await scrollRegion.evaluate((el) => ({
+    const geometry = await scrollRegion.evaluate((el) => ({
       scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight
+      clientHeight: el.clientHeight,
+      pageHeight: document.documentElement.scrollHeight,
+      position: getComputedStyle(el.closest('.wn-dashboard')!).position
     }))
 
-    if ((viewport?.width ?? 0) < 1024) {
-      // Mobile/tablet: the dashboard grid is taller than the viewport, so the panel body must scroll.
-      expect(scrollHeight).toBeGreaterThan(clientHeight)
+    if (viewport!.width < 1280 || viewport!.height < 896) {
+      expect(geometry.position).toBe('relative')
+      expect(geometry.pageHeight).toBeGreaterThan(viewport!.height)
     } else {
-      // Desktop: the dashboard is designed to fit the viewport without internal scrolling.
-      expect(scrollHeight).toBeLessThanOrEqual(clientHeight + 1)
+      expect(geometry.position).toBe('fixed')
+      expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight + 1)
     }
+
+    const lastCard = page.getByTestId('sun-hours-card')
+    await lastCard.scrollIntoViewIfNeeded()
+    await expect(lastCard).toBeInViewport()
+  })
+})
+
+test.describe('device orientation regressions', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const labels = {
+        en: { name: 'Frankfurt am Main', country: 'Germany', admin1: 'Hesse' },
+        de: { name: 'Frankfurt am Main', country: 'Deutschland', admin1: 'Hessen' }
+      }
+      const location = { id: 2925533, ...labels.en, latitude: 50.1155, longitude: 8.6842, timezone: 'Europe/Berlin', labels }
+      localStorage.setItem('weather-now:last-location', JSON.stringify(location))
+      const favorites = Array.from({ length: 12 }, (_, index) => ({
+        ...location,
+        id: location.id + index,
+        latitude: location.latitude + index,
+        labels: Object.fromEntries(Object.entries(labels).map(([language, label]) => [
+          language, { ...label, name: index ? `${label.name} ${index + 1}` : label.name }
+        ]))
+      }))
+      localStorage.setItem('weather-now:favorites', JSON.stringify(favorites))
+      // Nuxt DevTools is not part of the production layout.
+      document.addEventListener('DOMContentLoaded', () => {
+        const style = document.createElement('style')
+        style.textContent = '#nuxt-devtools-container { display: none !important; }'
+        document.head.append(style)
+      })
+    })
+    await page.route('**/api/weather**', route => route.fulfill({
+      json: {
+        ...chartWeatherResponse,
+        hourly: {
+          ...chartWeatherResponse.hourly,
+          temperature_2m: [-20, 0, 8, 30, 25, -8, 20, 12, -10, 0, 30, 20, -20]
+        }
+      }
+    }))
+  })
+
+  for (const language of ['en', 'de']) {
+    test(`fits cards, labels, and controls through phone/tablet rotation (${language})`, async ({ page }) => {
+      test.skip(!['desktop-chrome', 'iphone-15-pro'].includes(test.info().project.name), 'Chromium and WebKit viewport matrix')
+      await page.addInitScript(language => localStorage.setItem('weather-now:language', JSON.stringify(language)), language)
+      const errors: string[] = []
+      page.on('pageerror', error => errors.push(error.message))
+      await page.goto('/')
+      await expect(page.getByTestId('line-chart-value')).toHaveCount(13)
+
+      for (const viewport of [
+        { width: 412, height: 915 }, // Pixel 7 portrait
+        { width: 915, height: 412 },
+        { width: 412, height: 915 },
+        { width: 834, height: 1194 }, // 11-inch iPad portrait
+        { width: 1194, height: 834 },
+        { width: 834, height: 1194 },
+        { width: 1024, height: 1366 }, // larger portrait tablet still uses the drawer
+        { width: 1180, height: 820 }, // landscape iPad Air
+        { width: 1024, height: 400 }, // short, wide viewport
+        { width: 1280, height: 720 },
+        { width: 1280, height: 896 }, // dense layout boundary
+        { width: 1440, height: 1000 },
+        { width: 320, height: 568 }
+      ]) {
+        await page.setViewportSize(viewport)
+        const cards = [...cardTestIds, ...chartCardTestIds]
+        const geometry = await page.locator('.js-dashboard-scroll').evaluate((grid, ids) => {
+          const boxes = ids.map((id) => {
+            const card = grid.querySelector<HTMLElement>(`[data-testid="${id}"]`)!
+            const rect = card.getBoundingClientRect()
+            return { id, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, height: rect.height, clipped: card.scrollHeight - card.clientHeight }
+          })
+          return {
+            boxes,
+            position: getComputedStyle(grid.closest('.wn-dashboard')!).position,
+            columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+            pageWidth: document.documentElement.scrollWidth
+          }
+        }, cards)
+        expect(geometry.pageWidth, JSON.stringify(viewport)).toBeLessThanOrEqual(viewport.width + 1)
+        const dense = viewport.width >= 1280 && viewport.height >= 896
+        expect(geometry.position).toBe(dense ? 'fixed' : 'relative')
+        expect(geometry.columns).toBe(dense ? 12 : viewport.width >= 768 ? 2 : 1)
+        for (const [index, box] of geometry.boxes.entries()) {
+          expect(box.height, box.id).toBeGreaterThan(80)
+          expect(box.clipped, `${box.id} at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(1)
+          expect(box.left).toBeGreaterThanOrEqual(0)
+          expect(box.right).toBeLessThanOrEqual(viewport.width)
+          for (const other of geometry.boxes.slice(index + 1)) {
+            const overlap = Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
+              && Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top) > 1
+            expect(overlap, `${box.id} overlaps ${other.id}`).toBe(false)
+          }
+        }
+
+        const chart = page.getByTestId('line-chart-scroll')
+        await chart.scrollIntoViewIfNeeded()
+        const labelBounds = await chart.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          return [...element.querySelectorAll('[data-testid="line-chart-value"]')].map((label) => {
+            const range = document.createRange()
+            range.selectNodeContents(label)
+            const text = range.getBoundingClientRect()
+            return { top: text.top - bounds.top, bottom: bounds.bottom - text.bottom }
+          })
+        })
+        for (const bounds of labelBounds) {
+          expect(bounds.top, `Value clipped above chart at ${JSON.stringify(viewport)}`).toBeGreaterThanOrEqual(0)
+          expect(bounds.bottom).toBeGreaterThanOrEqual(0)
+        }
+        await chart.evaluate(element => { element.scrollLeft = element.scrollWidth })
+        const lastLabel = await chart.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          const last = [...element.querySelectorAll('[data-testid="line-chart-value"]')].at(-1)!.getBoundingClientRect()
+          return last.left >= bounds.left && last.right <= bounds.right
+        })
+        expect(lastLabel).toBe(true)
+        await page.getByTestId('sun-hours-card').scrollIntoViewIfNeeded()
+        await expect(page.getByTestId('sun-hours-card')).toBeInViewport()
+
+        await page.evaluate(() => window.scrollTo(0, 0))
+        const navbar = page.getByTestId('app-navbar')
+        await expect(navbar).toBeInViewport()
+        const toolbar = viewport.width >= 1024 && viewport.height >= 496 && viewport.width > viewport.height
+        const picker = navbar.getByRole(toolbar ? 'combobox' : 'button', {
+          name: language === 'en'
+            ? toolbar ? 'Search a city' : 'Search and saved cities'
+            : toolbar ? 'Stadt suchen' : 'Suche und gespeicherte Orte',
+          exact: true
+        })
+        await expect(picker).toBeVisible()
+        const navbarBox = await navbar.boundingBox()
+        if (viewport.width > viewport.height && viewport.height <= 480) {
+          expect(navbarBox!.height).toBeLessThanOrEqual(64)
+        }
+        const controls = [
+          picker,
+          navbar.getByRole('button', { name: language === 'en' ? 'Use my current location' : 'Meinen Standort verwenden', exact: true })
+        ]
+        if (!toolbar) controls.push(navbar.getByRole('button', { name: language === 'en' ? 'Settings' : 'Einstellungen', exact: true }))
+        for (const control of controls) {
+          const box = await control.boundingBox()
+          expect(box).not.toBeNull()
+          expect(box!.width).toBeGreaterThanOrEqual(44)
+          expect(box!.height).toBeGreaterThanOrEqual(44)
+          expect(box!.x).toBeGreaterThanOrEqual(0)
+          expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
+        }
+      }
+      expect(errors).toEqual([])
+    })
+  }
+
+  test('fills portrait drawer width, scrolls in landscape, and restores focus after closing', async ({ page }) => {
+    test.skip(!['desktop-chrome', 'iphone-15-pro'].includes(test.info().project.name), 'Chromium and WebKit drawer checks')
+    await page.addInitScript(() => localStorage.setItem('weather-now:language', JSON.stringify('en')))
+    await page.goto('/')
+    const picker = page.getByRole('button', { name: 'Search and saved cities', exact: true })
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 834, height: 1194 },
+      { width: 1024, height: 1366 },
+      { width: 915, height: 412 }
+    ]) {
+      await page.setViewportSize(viewport)
+      await picker.click()
+      const dialog = page.getByRole('dialog', { name: 'Search and saved cities' })
+      const manager = page.getByRole('region', { name: 'Favorite cities' })
+      await expect(manager).toBeVisible()
+      await expect.poll(async () => {
+        return manager.evaluate(element =>
+          Math.abs(element.getBoundingClientRect().width - element.parentElement!.clientWidth))
+      }).toBeLessThanOrEqual(2)
+      // WebKit reserves space for scrollbars and landscape safe-area insets.
+      expect((await manager.boundingBox())!.width).toBeGreaterThanOrEqual(viewport.width * 0.95)
+      const bounds = await dialog.boundingBox()
+      expect(bounds!.height).toBeLessThanOrEqual(viewport.height - 16 + 1)
+      expect(bounds!.y).toBeGreaterThanOrEqual(0)
+      await expect(dialog.getByRole('textbox', { name: 'Search a city' })).toBeVisible()
+      await dialog.getByRole('button', { name: 'Edit list', exact: true }).click()
+      const remove = dialog.getByRole('button', { name: 'Remove Frankfurt am Main 12 from favorites', exact: true })
+      await remove.scrollIntoViewIfNeeded()
+      await expect(remove).toBeInViewport()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+      await expect(picker).toBeFocused()
+    }
+  })
+
+  test('reserves headroom for the active temperature tooltip', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop-chrome', 'Pointer hover regression')
+    await page.setViewportSize({ width: 412, height: 915 })
+    await page.addInitScript(() => localStorage.setItem('weather-now:language', JSON.stringify('en')))
+    await page.goto('/')
+    const chart = page.getByTestId('line-chart-scroll')
+    await chart.scrollIntoViewIfNeeded()
+    const svg = chart.getByRole('img')
+    const width = await svg.evaluate(element => element.getBoundingClientRect().width)
+    await svg.hover({ position: { x: width * 3.5 / 13, y: 10 } })
+    await expect(chart.getByTestId('line-chart-tooltip')).toContainText('30°')
+    const clipped = await chart.evaluate((element) => {
+      const tooltip = element.querySelector('[data-testid="line-chart-tooltip"]')!
+      return tooltip.getBoundingClientRect().top < element.getBoundingClientRect().top
+    })
+    expect(clipped).toBe(false)
   })
 })
