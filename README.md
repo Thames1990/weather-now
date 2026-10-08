@@ -117,8 +117,9 @@ pnpm preview
 ## GitHub Pages
 
 Pull requests targeting `main`, pushes to `main`, and manual workflow runs
-check lint, unit tests, and a static production build. Pushes and manual runs
-deploy to https://weather.mohrworks.com/ only after all checks pass;
+check lint, unit tests, a Playwright smoke test across all configured browser
+projects, and a static production build. Pushes and manual runs deploy to
+https://weather.mohrworks.com/ only after all checks pass;
 pull requests never deploy. The workflow builds for the site root in `worker`
 API mode with `NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com`, so forecasts
 and city search go through the [weather Worker](workers/weather/README.md).
@@ -175,8 +176,12 @@ for Actions-based deployments.
 ```bash
 pnpm lint
 pnpm test
+pnpm test:e2e:smoke
 pnpm build
 ```
+
+The focused Playwright smoke command also runs in pull-request CI. Use
+`pnpm test:e2e` to run the full local browser suite.
 
 To reproduce the GitHub Pages static production build:
 

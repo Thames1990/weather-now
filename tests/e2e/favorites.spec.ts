@@ -66,6 +66,22 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://api.open-meteo.com/v1/forecast?**', route => route.fulfill({ json: forecast }))
 })
 
+test('searches for and selects a city @smoke', async ({ page }) => {
+  await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))
+  await page.route('https://geocoding-api.open-meteo.com/v1/search?**', route => route.fulfill({ json: { results: [cologne] } }))
+  await page.goto('/')
+  await expect(locationPicker(page)).toBeEnabled({ timeout: 15000 })
+
+  const search = citySearch(page)
+  if (!(await search.isVisible())) await locationPicker(page).click()
+  await expect(search).toBeVisible()
+  await search.fill('Cologne')
+  const result = cityResult(page)
+  await expect(result).toBeVisible()
+  await result.click()
+  await expect(page.getByTestId('current-weather-card').getByRole('heading', { level: 2 })).toHaveText('Cologne')
+})
+
 test('keeps desktop search and saved cities in separate panels', async ({ page }) => {
   test.skip(test.info().project.name !== 'desktop-chrome', 'Desktop-specific search interaction')
   await page.route('**/api/geocode?**', route => route.fulfill({ json: { results: [cologne] } }))

@@ -259,8 +259,9 @@ test.describe('responsive dashboard layout', () => {
     expect(clothingPieces!.y - (clothingSummary!.y + clothingSummary!.height)).toBeGreaterThan(24)
   })
 
-  test('renders every dashboard card with real height and no horizontal overflow', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'networkidle' })
+  test('renders every dashboard card with real height and no horizontal overflow @smoke', async ({ page }) => {
+    await page.route('**/api/weather**', route => route.fulfill({ json: chartWeatherResponse }))
+    await page.goto('/')
 
     const viewport = page.viewportSize()
     expect(viewport).not.toBeNull()

@@ -36,7 +36,9 @@ flowchart TD
 
 ## Checks and deployment gates
 
-- [Pages](deploy.yml): lint, unit tests, and a static production build.
+- [Pages](deploy.yml): lint, unit tests, a static production build, and a
+  Playwright smoke test of city search and dashboard layouts across all
+  configured browser projects.
 - [Worker](deploy-worker.yml): lint, type-checking, unit tests, and a Wrangler
   dry-run build. The required `Validate Worker` job reports on every PR, but
   runs these checks only for relevant changes. Otherwise, it reports success
@@ -60,8 +62,8 @@ flowchart TD
 
 ## Branch protection
 
-`main` requires `lint`, `test`, `Static production build`, and `Validate Worker`
-to pass, with branches up to date before merging. It does not require a PR,
-reviewer approval, or resolved review conversations. Direct pushes are still
-subject to the required checks for the pushed commit. These settings are
-managed in GitHub, not by the workflow YAML.
+`main` requires `lint`, `test`, `Static production build`, `Playwright smoke`,
+and `Validate Worker` to pass, with branches up to date before merging. It does
+not require a PR, reviewer approval, or resolved review conversations. Direct
+pushes are still subject to the required checks for the pushed commit. These
+settings are managed in GitHub, not by the workflow YAML.
