@@ -3,13 +3,13 @@
 Separate Cloudflare Worker for the existing **api** service at
 **https://api.mohrworks.com**. The Pages frontend, Nuxt server routes, and
 `NUXT_PUBLIC_API_MODE=external` remain unchanged. The backend is active in
-production as version `c94d80de-f49f-4b2f-88f8-e07c861ebf38` (October 7, 2026),
-with 100% traffic on the existing custom domain. This version adds structured
-request summaries and query-string redaction, and disables persistent Workers
-Logs and Issues because Cloudflare retains sensitive request metadata.
-Traces remain disabled. `/health` returned HTTP 200 after the deployment.
-An isolated check verified Issues grouping but found retained location-ID
-paths and selected headers; production was not fault-injected.
+production as version `d589f993-bab4-4457-82de-91abf0d67319` (October 8, 2026),
+with 100% traffic on the existing custom domain. At last verification,
+observability was enabled with query redaction; Logs persistence, invocation
+logs, Issues, and traces were disabled. This branch enables persistent Logs
+and Issues while keeping invocation logs off and traces disabled pending
+verification of native URL redaction. The branch configuration has not been
+deployed. `/health` returned HTTP 200 after the last production deployment.
 Earlier production smoke checks covered the Berlin forecast, default and
 German search, ID lookup (known and unknown), IP location, invalid input, and
 allowed and denied CORS origins. The original Hello World version is
@@ -256,94 +256,111 @@ quota would require a separately designed centralized limiter.
 
 ## Observability and operations
 
-Persistent Workers Logs, Issues, and native tracing are disabled because
-available redaction does not satisfy the location privacy requirements.
-Each invocation still emits exactly one structured
-`event: "request"` summary with only `route`, `method`, `status`, error `code`,
-`duration_ms`, `upstream_outcome`, `upstream_ms`, and deployment `version`.
-The application summary uses route templates and does not include IPs, request
-bodies, headers, provider payloads, coordinates, search terms, location IDs,
-exception messages, or stacks. Stable error codes provide safe grouping context
-without copying untrusted exception text.
+The branch configuration enables structured, persistent Logs and Issues while
+keeping automatic invocation logs off:
 
-Application summaries use `console.log` below HTTP 500 and `console.error` for
-HTTP 500 and above. Cloudflare Workers Issues records error logs and groups
-occurrences. An isolated check of the real handler with synthetic bindings
-confirmed that validation (400), unknown-route (404), and rate-limit (429)
-responses did not create issues. The `observability.issues.enabled` setting
-requires Wrangler 4.134 or newer; this Worker uses Wrangler 4.147
-([Issues documentation](https://developers.cloudflare.com/workers/observability/issues/)).
-Local tests verify that one sanitized `console.error` summary is emitted for
-unexpected 5xx failures and that expected 4xx responses use `console.log`.
-An isolated Cloudflare Worker check on October 7, 2026 confirmed that handled
-5xx responses are grouped without persistent logs: seven 500/503 requests
-produced seven occurrences in one issue, with no duplicate occurrences or
-issues from the preceding 4xx checks. Query values were redacted.
-Occurrences retain raw request paths, including the synthetic location ID,
-and selected headers
-(`user-agent`, `cf-ipcountry`, and `cf-ray`). Errors are grouped under the
-generic title `request`, without the original exception stack or the summary's
-error code in occurrence details. Issues therefore does not yet meet the
-location privacy and useful diagnostic-context requirements. The temporary
-Worker was removed after verification; production was not fault-injected.
-Issues is now disabled to stop new occurrences; existing occurrence details
-may remain available for the documented seven-day retention period.
-Invocation logs are disabled, and persistent custom log storage
-is disabled because Cloudflare attaches sensitive request metadata to each log
-event. The structured application summary is still emitted, but it is not
-available in the dashboard's persistent Logs or Query Builder. `version` is
-Cloudflare Version Metadata's deployment ID; local runs use `local`.
-`redact_query_string` removes incoming query values from request-context
-metadata, but does not redact request headers, geolocation fields, or path
-segments. A real-time `wrangler tail` also includes that sensitive metadata;
-do not use it for routine production debugging while this privacy limitation
-remains.
+| Setting | Branch configuration | Purpose |
+| --- | --- | --- |
+| `observability.enabled` | `true` | Enable Worker observability |
+| `observability.redact_query_string` | `true` | Remove query strings from request URLs in logs and traces |
+| `observability.logs.enabled` / `persist` | `true` / `true` | Persist custom application logs |
+| `observability.logs.head_sampling_rate` | `1` | Retain all application logs unless account limits apply |
+| `observability.logs.invocation_logs` | `false` | Avoid automatic per-invocation log events |
+| `observability.issues.enabled` | `true` | Capture/group errors emitted at error severity |
+| `observability.traces.enabled` | `false` | Avoid unverified automatic URL/span attributes |
 
-**Notifications are not configured.** The account was inspected on October 7,
-2026; no existing Issues notification destinations or automations were found.
-Cloudflare Issues supports automations to external
-destinations, but this change does not create an account, integration, or relay.
-Issues is disabled for privacy, so it is not an active investigation baseline.
-Verify adequate metadata redaction and a suitable destination before enabling
-Issues or notifications.
+The production Worker is still on the settings described at the top of this
+README; merge and deploy this branch before expecting persistent Logs or Issues
+to appear. `version` in the application event comes from Cloudflare Version
+Metadata; local runs use `local`.
+
+Each handled request emits one allowlisted `event: "request"` summary with
+`route`, `method`, `status`, `code`, `duration_ms`, `upstream_outcome`,
+`upstream_ms`, and deployment `version`. Routes use templates, including
+`/locations/:id`. The application summary contains no client IP, request body,
+headers, provider payload, coordinate, search term, or raw location ID.
+Responses below 500 use `console.log`; 500+ use `console.error` with a safe
+message keyed by the stable error code, the same summary fields, and stack
+frames from the caught error. The caught error message is not copied into the
+report. Upstream response bodies and provider error text are discarded by the
+existing validation layer.
+
+Cloudflare can add platform request metadata to custom logs and Issues
+independently of the application summary. Prior account observations included
+request URL/path/search fields and selected headers such as `user-agent`,
+`cf-ipcountry`, and `cf-ray`; IP/geolocation and request identifiers may also
+be present. Public location-ID paths and routine diagnostic metadata are not
+blanket blockers for this issue. Query-string redaction is enabled and
+Cloudflare documents it as removing query strings from request URLs, but
+verify the actual indexed fields (including any parsed `request.search` value)
+with a synthetic marker after deployment. Do not claim the full query context
+is redacted based only on the URL field. Never put credentials, request bodies,
+raw provider payloads, or unfiltered exception text in application logs.
+
+**Access and retention:** Logs and Issues are visible to Cloudflare account
+members with access to the Worker/Observability dashboard; review account
+member roles and API-token scopes before expanding access. Cloudflare
+documents Logs retention of up to 3 days on Workers Free (200,000 events/day)
+and 7 days on Workers Paid (20 million/month included, then $0.60 per
+additional million, as documented before December 1, 2026). The account plan,
+actual event volume, and billing must be checked in the dashboard; do not infer
+them from this repository. Cloudflare documents Issues occurrence details as
+retained for 7 days. See [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/),
+[Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/),
+and [Issues](https://developers.cloudflare.com/workers/observability/issues/).
+
+**Error grouping and verification:** Issues groups 5xx responses and logs at
+error severity. The safe message includes the summary code, so `upstream_status`
+and `upstream_network` can form distinct groups while expected 4xx remain in
+the normal log channel. Local tests verify one error log per handled 5xx, safe
+message/stack handling, different grouping keys for different codes, and
+expected 4xx via `console.log`. The new Cloudflare grouping behavior has not
+yet been verified against a deployed build; do not use a public failure hook
+for testing.
+
+**Query Builder:** After Logs persistence is active, use the custom summary
+fields to verify and save these dashboard queries:
+
+| Query | Filter | Group by / visualization |
+| --- | --- | --- |
+| Request counts | `event = request` | Count events by `route` and `status` |
+| 5xx errors | `event = request`, `status >= 500` | Count by `route` and `code` |
+| Request latency | `event = request` | p95 of `duration_ms` by `route` |
+| Upstream problems | `upstream_outcome = timeout OR upstream_outcome = status` | Count by `route` and `code` |
+| Rate-limit hits | `code = rate_limited` | Count by `route` |
+
+These are query specifications, not verified saved queries. Confirm the
+dashboard recognizes each field and aggregation, run them against this Worker,
+and save the resulting queries after the approved production rollout. When a
+request does not call a provider, `upstream_ms` is null and may be absent from
+indexed fields; exclude missing values from provider-latency aggregations.
+Check event-limit/sample indicators as well as the configured sampling rate.
+
+**Notifications:** The latest account inspection found no existing Issues
+notification destinations or automations. Cloudflare Issues automations send
+to external coding-agent, webhook, chat, or incident-management destinations;
+no direct-email destination was documented. No destination or integration is
+created by this change. If no suitable already-approved destination exists,
+document the absence and leave Issues notifications unconfigured.
 
 ### Sampling, tracing, and privacy
 
-Persistent Workers Logs are disabled (`observability.logs.persist: false`).
-Application log sampling is configured to 1.0, but no application log events
-are persisted for dashboard queries. Issues is also disabled
-(`observability.issues.enabled: false`): the isolated check found that it
-independently retains location-ID paths and selected request headers.
-Disabling persistent logs alone does not disable Issues occurrence storage.
-Use existing aggregate Worker metrics and manual checks while privacy-safe
-diagnostics remain unavailable. See [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
-and [Observability pricing](https://developers.cloudflare.com/observability/pricing/).
+Application log sampling is configured to 1.0; invocation logs are off. Logs
+sampling controls event volume, not data redaction. Cloudflare can apply
+account-level event limits or head sampling when a daily cap is reached, so
+confirm the dashboard's actual ingestion and sampling status. Existing data may
+remain available until its retention period expires after Logs or Issues are
+disabled.
 
-Cloudflare attaches request-context metadata to custom log events in addition
-to the application summary. A production tail confirmed that this metadata
-includes client IP headers and IP-geolocation fields (including city and
-coordinates), as well as the request path. Query redaction is enabled and
-removes query values from the incoming URL, but `/locations/{id}` can still
-expose the location ID in the path. Cloudflare's available redaction setting
-covers query strings, not request headers, geolocation fields, or path
-segments. Persistent Workers Logs have therefore been disabled until adequate
-redaction is available. The earlier deployed version did not redact query
-strings; its existing log events may remain queryable until the account's
-retention period expires.
-
-Native tracing is explicitly disabled. Cloudflare's documented automatic
-attributes include incoming `url.full`/`url.query`, request metadata, and
-outbound fetch `url.full`/`url.query`. The weather provider URL contains
-coordinates and geocoding URLs contain search text or location IDs. Query
-redaction does not remove path segments, so these attributes cannot be made
-privacy-safe by lowering the head-sampling rate; therefore production tracing
-is not enabled. Do not enable it unless Cloudflare provides a way to exclude
-or redact those attributes and that behavior has been verified against a real
-span. This review uses Cloudflare's published
-[span and attribute list](https://developers.cloudflare.com/workers/observability/traces/spans-and-attributes/);
-no production trace was enabled or inspected. Issues is also disabled because
-its independently retained occurrence metadata includes raw location-ID paths
-and selected headers.
+Native tracing remains disabled. Cloudflare's automatic span attributes can
+include incoming and outbound URL/query fields; weather URLs contain
+coordinates, and geocoding requests can contain a search term or location ID.
+Although query-string redaction is configured, verify it on outbound spans and
+check path fields before enabling traces. This is a specific risk from
+provider-request URL attributes, not a blanket prohibition on IP,
+geolocation, location-ID, or ordinary request metadata. If traces remain off,
+the runbook intentionally leaves provider span-level timing unavailable;
+application `upstream_ms` remains available in the custom summary.
 
 ### Manual checks and recovery
 
@@ -354,8 +371,8 @@ and selected headers.
   incidents and [GitHub status](https://www.githubstatus.com/) for Pages or
   Actions incidents; check [Cloudflare status](https://www.cloudflarestatus.com/)
   for Worker platform incidents.
-- Review existing aggregate Worker metrics and manual checks. Persistent Logs
-  and Issues are disabled pending adequate request-metadata redaction.
+- Review Workers Logs and Issues after the approved deployment; verify
+  query-string redaction, error grouping, and event sampling/limits.
 - Roll back the Worker to a recorded healthy version with
   `pnpm --dir workers/weather exec wrangler rollback <VERSION_ID>`.
 - Roll back Pages by redeploying the previous known-good commit through the

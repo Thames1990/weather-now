@@ -107,7 +107,12 @@ describe('Worker contract', () => {
     expect(console.error).toHaveBeenCalledTimes(1)
     expect(console.log).not.toHaveBeenCalled()
     const summary = vi.mocked(console.error).mock.calls[0]?.[0]
-    expect(summary).toEqual({
+    expect(summary).toBeInstanceOf(Error)
+    expect(summary).toHaveProperty('message', 'Worker request failed (internal_error)')
+    expect(summary).toHaveProperty('stack', expect.any(String))
+    expect((summary as Error).message).not.toMatch(/private|location|52\.52|13\.40/)
+    expect((summary as Error).stack).not.toContain('private location')
+    expect(summary).toMatchObject({
       event: 'request',
       route: 'other',
       method: 'unknown',
@@ -311,6 +316,9 @@ describe('Provider failures and deadlines', () => {
     expect(await response.text()).not.toMatch(/secret|Berlin/)
     expect(console.error).toHaveBeenCalledTimes(1)
     const summary = vi.mocked(console.error).mock.calls[0]?.[0]
+    expect(summary).toBeInstanceOf(Error)
+    expect(summary).toHaveProperty('message', 'Worker request failed (upstream_network)')
+    expect((summary as Error).stack).not.toMatch(/secret|private|Berlin|open-meteo|query/)
     expect(summary).toMatchObject({
       event: 'request',
       route: '/locations',
@@ -319,6 +327,21 @@ describe('Provider failures and deadlines', () => {
       upstream_outcome: 'status'
     })
     expect(JSON.stringify(summary)).not.toMatch(/secret|private|Berlin|open-meteo|query/)
+  })
+
+  it('uses stable error codes to distinguish actionable issue groups', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 503 }))
+    await handleRequest(request('/locations?q=Berlin'), env)
+    fetchMock.mockRejectedValue(new Error('private provider detail'))
+    await handleRequest(request('/locations?q=Berlin'), env)
+
+    const reports = vi.mocked(console.error).mock.calls.map(([error]) => error as Error)
+    expect(reports.map(error => error.message)).toEqual([
+      'Worker request failed (upstream_status)',
+      'Worker request failed (upstream_network)'
+    ])
+    expect(reports[0]?.stack).not.toContain('private provider detail')
+    expect(reports[1]?.stack).not.toContain('private provider detail')
   })
 
   it.each([
