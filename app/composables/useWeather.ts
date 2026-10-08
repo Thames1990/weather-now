@@ -1,7 +1,8 @@
 import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } from '~/types/weather'
 import { resolveCityIdentity } from '~/utils/locations'
-import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '~/utils/provider-validation'
-import { normalizeWeather, selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
+import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '#shared/weather/provider-validation'
+import { normalizeWeather } from '#shared/weather/normalize'
+import { selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
 import { apiErrorMessage } from '~/utils/worker-api'
 import { useWorkerApi } from '~/composables/useWorkerApi'
 

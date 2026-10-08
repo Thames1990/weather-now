@@ -151,7 +151,7 @@ sunshine duration seconds, and wind direction degrees. `current.time`,
 `daily.time` contains local `YYYY-MM-DD` dates. `timezone` is the provider's
 timezone identifier. Provider metadata (including `utc_offset_seconds` and unit
 objects) may also be present, as with existing normalization; consumers should
-use the stable fields defined in `app/types/weather.ts`.
+use the stable fields defined in `shared/weather/types.ts`.
 
 Errors have one shape, e.g.:
 
@@ -376,9 +376,8 @@ those checks. Relevant changes include the Worker, its shared source imports,
 dependency/lint configuration, and its workflow; see the
 [workflow overview](../../.github/workflows/README.md).
 These jobs receive no Cloudflare credentials and never publish. Changes to
-`workers/weather/**` or the shared `app/utils/provider-validation.ts`,
-`app/utils/weather.ts`, and `app/types/weather.ts` pushed to `main` run the
-full checks and then deploy the
+`workers/weather/**` or `shared/weather/**` pushed to `main` run the full
+checks and then deploy the
 existing **api** Worker. The `main` branch requires successful status checks
 for pull requests but does not require changes to arrive through a pull
 request: direct pushes to `main` are allowed and trigger the same workflows.

@@ -1,6 +1,6 @@
 import type { FavoriteLocation, LocationLabels, LocationResult } from '~/types/weather'
 import { favoriteLabels, localizeFavorite, moveItem, resolveCityIdentity, sameLocation } from '~/utils/locations'
-import { parseGeocodingResults, parseReverseGeocodeResult } from '~/utils/provider-validation'
+import { parseGeocodingResults, parseReverseGeocodeResult } from '#shared/weather/provider-validation'
 import { apiErrorMessage, LocationNotFoundError } from '~/utils/worker-api'
 import { useWorkerApi } from '~/composables/useWorkerApi'
 

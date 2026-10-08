@@ -1,5 +1,5 @@
-import { isValidCoordinates, parseGeocodingResults, parseOpenMeteoWeatherResponse } from '../../../app/utils/provider-validation'
-import { normalizeWeather } from '../../../app/utils/weather'
+import { isValidCoordinates, parseGeocodingResults, parseOpenMeteoWeatherResponse } from '../../../shared/weather/provider-validation'
+import { normalizeWeather } from '../../../shared/weather/normalize'
 import { ApiError, fetchJson } from './upstream'
 
 export interface Env {

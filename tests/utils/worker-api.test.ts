@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { LocationResult, OpenMeteoWeatherResponse } from '~/types/weather'
+import type { LocationResult, OpenMeteoWeatherResponse } from '../../shared/weather/types'
 import { resolveApiConfig } from '~/utils/api-config'
-import { normalizeWeather } from '~/utils/weather'
+import { normalizeWeather } from '../../shared/weather/normalize'
 import { ApiUnavailableError, apiErrorMessage, createWorkerApi, formatCoordinate, LocationNotFoundError, parseRetryAfter } from '~/utils/worker-api'
 
 const baseUrl = 'https://api.example.test'

@@ -7,8 +7,7 @@
     "types": ["@cloudflare/workers-types"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "skipLibCheck": true,
-    "paths": { "~/*": ["../../app/*"] }
+    "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "../../shared/**/*.ts"]
 }

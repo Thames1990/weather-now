@@ -1,4 +1,4 @@
-import { parseReverseGeocodeResult, type ReverseGeocodeResult } from '~/utils/provider-validation'
+import { parseReverseGeocodeResult, type ReverseGeocodeResult } from '#shared/weather/provider-validation'
 import { fetchAndParseProviderResponse, parseCoordinates } from '../utils/provider'
 
 export default defineCachedEventHandler(async (event): Promise<ReverseGeocodeResult> => {

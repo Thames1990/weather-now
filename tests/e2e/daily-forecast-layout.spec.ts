@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type { LocationResult, OpenMeteoWeatherResponse } from '../../app/types/weather'
-import { normalizeWeather } from '../../app/utils/weather'
+import type { LocationResult, OpenMeteoWeatherResponse } from '../../shared/weather/types'
+import { normalizeWeather } from '../../shared/weather/normalize'
 
 const bonn: LocationResult = {
   name: 'Bonn', country: 'Germany', latitude: 50.74, longitude: 7.1, timezone: 'Europe/Berlin'

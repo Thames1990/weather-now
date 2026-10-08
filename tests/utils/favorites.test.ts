@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
-import type { FavoriteLocation, LocationResult } from '~/types/weather'
+import type { FavoriteLocation } from '~/types/weather'
+import type { LocationResult } from '../../shared/weather/types'
 import { favoriteLabels, localizeFavorite, moveItem, resolveCityIdentity, sameLocation } from '~/utils/locations'
 
 const cologne: LocationResult = {

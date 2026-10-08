@@ -5,7 +5,7 @@ import {
   parseIpLocationResult,
   parseOpenMeteoWeatherResponse,
   parseReverseGeocodeResult
-} from '~/utils/provider-validation'
+} from '../../shared/weather/provider-validation'
 
 const timestamp = 1_790_000_000
 const validWeather = {

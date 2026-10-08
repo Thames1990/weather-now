@@ -6,7 +6,7 @@ Checks must pass before the corresponding deployment can proceed.
 ```mermaid
 flowchart TD
     PR["PR to main"] --> FRONTEND["Frontend checks"]
-    PR --> RELEVANT{"Worker-related files changed?"}
+    PR --> RELEVANT{"Worker code or shared weather modules changed?"}
     RELEVANT -->|"Yes"| PRWORKER["Worker checks"]
     RELEVANT -->|"No"| NOTNEEDED["Validate Worker reports success:<br/>validation not needed"]
     FRONTEND --> PRCHECKS{"All applicable checks passed?"}
@@ -19,7 +19,7 @@ flowchart TD
     MAIN --> PAGES["Pages checks"]
     PAGES -->|"Pass"| SITE["Deploy frontend"]
     PAGES -->|"Fail"| SITEFAIL["No frontend deployment"]
-    MAIN --> CHANGED{"Worker source or shared dependencies changed?"}
+    MAIN --> CHANGED{"Worker code or shared weather modules changed?"}
     CHANGED -->|"No"| SKIP["Worker workflow not triggered"]
     CHANGED -->|"Yes"| WORKER["Worker checks"]
     WORKER -->|"Fail"| APIFAIL["No Worker deployment"]
@@ -42,15 +42,14 @@ flowchart TD
   runs these checks only for relevant changes. Otherwise, it reports success
   with "Worker validation not needed."
 - Relevant PR changes include `workers/weather/**`, the shared
-  `app/utils/provider-validation.ts`, `app/utils/weather.ts`, and
-  `app/types/weather.ts`, repository dependency/pnpm configuration, ESLint
-  configuration, and the Worker workflow itself.
+  `shared/weather/**` modules, repository dependency/pnpm configuration,
+  ESLint configuration, and the Worker workflow itself.
 - Failed deployment checks stop that deployment. Neither workflow waits for
   the other workflow after `main` is updated.
-- Worker pushes trigger its workflow only when `workers/weather/**` or one of
-  those three shared source files changes. Shared source changes also need
-  deployment because they are bundled into the Worker. Push and manual runs
-  always perform full Worker validation.
+- Worker pushes trigger its workflow when `workers/weather/**` or
+  `shared/weather/**` changes. Shared source changes also need deployment
+  because they are bundled into the Worker. Push and manual runs always
+  perform full Worker validation.
 - The Worker production gate waits for approval **only if required reviewers
   are configured on the GitHub `production` Environment**. Without that
   setting, it proceeds automatically after checks pass. Deployment also needs

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref, watch } from 'vue'
-import type { LocationResult, OpenMeteoWeatherResponse, WeatherResponse } from '~/types/weather'
-import { normalizeWeather } from '~/utils/weather'
+import type { LocationResult, OpenMeteoWeatherResponse, WeatherResponse } from '../../shared/weather/types'
+import { normalizeWeather } from '../../shared/weather/normalize'
 
 const upstream: OpenMeteoWeatherResponse = {
   timezone: 'Europe/Berlin',
