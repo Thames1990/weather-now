@@ -420,15 +420,17 @@ checks and then deploy the
 existing **api** Worker. The `main` branch requires successful status checks
 for pull requests but does not require changes to arrive through a pull
 request: direct pushes to `main` are allowed and trigger the same workflows.
-Worker deployments still wait for Worker validation and the production
-Environment approval. Manual Worker workflow runs validate only and never
-deploy. Deployments are serialized and record
+When a PR that changes the Worker or shared weather modules is merged to
+`main`, the push triggers full Worker validation and automatically deploys the
+existing **api** Worker if validation passes. The GitHub `production`
+Environment has no required reviewers, so deployments do not pause for
+per-run approval. Manual Worker workflow runs validate only and never deploy.
+Deployments are serialized and record
 `Deploy <short SHA>: <commit subject>` in Cloudflare's deployment history.
 
-Before the first deployment, configure the GitHub **production** Environment
-with required reviewers (and prevent self-review where available) so the
-deploy job pauses for approval. Add
+Configure the GitHub **production** Environment with
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as Environment secrets.
+Do not configure required reviewers if deployments should remain automatic.
 Create the token for the Cloudflare account containing the existing **api**
 Worker, scoped to that Worker with the **Editor** role (legacy permission:
 **Workers Scripts: Edit**). Do not grant Workers Routes Write: the Wrangler
@@ -438,8 +440,8 @@ out of repository-level secrets and local files.
 
 To deploy through a pull request, wait for its checks and merge it; to deploy
 through a direct push, push the Worker change to `main`. Both paths require
-Worker validation and production Environment approval before publishing. A
-manual workflow run can be used to validate a selected branch, but not to
+Worker validation before publishing, without per-deployment acknowledgment.
+A manual workflow run can be used to validate a selected branch, but not to
 deploy. For recovery, roll back to a recorded healthy version using the
 procedure below; rerunning the workflow does not roll back.
 

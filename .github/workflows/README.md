@@ -23,9 +23,7 @@ flowchart TD
     CHANGED -->|"No"| SKIP["Worker workflow not triggered"]
     CHANGED -->|"Yes"| WORKER["Worker checks"]
     WORKER -->|"Fail"| APIFAIL["No Worker deployment"]
-    WORKER -->|"Pass"| GATE["Production deployment gate"]
-    GATE -->|"Allowed"| API["Deploy api Worker"]
-    GATE -->|"Waiting or rejected"| HOLD["Worker deployment held or blocked"]
+    WORKER -->|"Pass"| API["Deploy api Worker automatically"]
 
     MP["Manual Pages run"] --> MPC["Pages checks for selected ref"]
     MPC -->|"Pass"| MPD["Deploy selected ref to frontend"]
@@ -52,10 +50,11 @@ flowchart TD
   `shared/weather/**` changes. Shared source changes also need deployment
   because they are bundled into the Worker. Push and manual runs always
   perform full Worker validation.
-- The Worker production gate waits for approval **only if required reviewers
-  are configured on the GitHub `production` Environment**. Without that
-  setting, it proceeds automatically after checks pass. Deployment also needs
-  the Environment's Cloudflare secrets; see the
+- Merging a PR that changes `workers/weather/**` or `shared/weather/**` to
+  `main` triggers Worker validation and automatically deploys the existing
+  `api` Worker when the checks pass. The GitHub `production` Environment has
+  no required reviewers, so deployment does not pause for per-run approval.
+  Deployment uses the Environment's Cloudflare secrets; see the
   [Worker setup and recovery runbook](../../workers/weather/README.md#automated-production-deployment).
 - Manual Pages runs can deploy the selected ref. Manual Worker runs never
   deploy.
