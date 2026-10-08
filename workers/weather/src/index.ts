@@ -186,8 +186,29 @@ interface RequestTelemetry {
   upstreamMs: number | null
 }
 
+interface RequestSummary {
+  event: 'request'
+  route: RouteTemplate
+  method: string
+  status: number
+  code: string | null
+  duration_ms: number
+  upstream_outcome: UpstreamOutcome
+  upstream_ms: number | null
+  version: string
+}
+
 function elapsedMs(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt))
+}
+
+function issueError(summary: RequestSummary & { code: string }, cause: unknown): Error & RequestSummary {
+  const error = new Error(`Worker request failed (${summary.code})`)
+  if (cause instanceof Error && typeof cause.stack === 'string') {
+    const frames = cause.stack.split('\n').slice(1)
+    if (frames.length > 0) error.stack = `${error.name}: ${error.message}\n${frames.join('\n')}`
+  }
+  return Object.assign(error, summary)
 }
 
 function routeTemplate(pathname: string): RouteTemplate {
@@ -232,6 +253,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   let routeName: RouteTemplate = 'other'
   let method = 'unknown'
   let code: string | null = null
+  let errorCause: unknown
   let response: Response
   try {
     const url = new URL(request.url)
@@ -288,6 +310,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = Response.json(result, { headers })
     }
   } catch (error) {
+    errorCause = error
     const failure = error instanceof ApiError
       ? error
       : new ApiError(500, 'internal_error', 'Unexpected server error')
@@ -297,7 +320,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       status: failure.status, headers
     })
   }
-  const summary = {
+  const summary: RequestSummary = {
     event: 'request',
     route: routeName,
     method,
@@ -308,7 +331,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     upstream_ms: telemetry.upstreamMs,
     version: env.CF_VERSION_METADATA?.id ?? 'local'
   }
-  if (response.status >= 500) console.error(summary)
+  if (response.status >= 500) {
+    console.error(issueError({ ...summary, code: summary.code ?? 'internal_error' }, errorCause))
+  }
   else console.log(summary)
   return response
 }
