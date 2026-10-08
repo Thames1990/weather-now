@@ -3,13 +3,12 @@
 Separate Cloudflare Worker for the existing **api** service at
 **https://api.mohrworks.com**. The Pages frontend, Nuxt server routes, and
 `NUXT_PUBLIC_API_MODE=external` remain unchanged. The backend is active in
-production as version `d589f993-bab4-4457-82de-91abf0d67319` (October 8, 2026),
-with 100% traffic on the existing custom domain. At last verification,
-observability was enabled with query redaction; Logs persistence, invocation
-logs, Issues, and traces were disabled. This branch enables persistent Logs
-and Issues while keeping invocation logs off and traces disabled pending
-verification of native URL redaction. The branch configuration has not been
-deployed. `/health` returned HTTP 200 after the last production deployment.
+production as version `1f8bd0b8-c348-441a-a36c-824e278a2e7b` (October 8, 2026),
+with 100% traffic on the existing custom domain. Production observability was
+verified on October 8, 2026: Logs persistence and Issues are enabled, query
+redaction is enabled, invocation logs and traces are disabled, and the
+synthetic redaction probe described below returned HTTP 400 without exposing
+its query marker in indexed request fields. `/health` returned HTTP 200.
 Earlier production smoke checks covered the Berlin forecast, default and
 German search, ID lookup (known and unknown), IP location, invalid input, and
 allowed and denied CORS origins. The original Hello World version is
@@ -265,10 +264,10 @@ quota would require a separately designed centralized limiter.
 
 ## Observability and operations
 
-The branch configuration enables structured, persistent Logs and Issues while
-keeping automatic invocation logs off:
+The deployed production configuration enables structured, persistent Logs and
+Issues while keeping automatic invocation logs off:
 
-| Setting | Branch configuration | Purpose |
+| Setting | Production setting (verified) | Purpose |
 | --- | --- | --- |
 | `observability.enabled` | `true` | Enable Worker observability |
 | `observability.redact_query_string` | `true` | Remove query strings from request URLs in logs and traces |
@@ -278,10 +277,10 @@ keeping automatic invocation logs off:
 | `observability.issues.enabled` | `true` | Capture/group errors emitted at error severity |
 | `observability.traces.enabled` | `false` | Avoid unverified automatic URL/span attributes |
 
-The production Worker is still on the settings described at the top of this
-README; merge and deploy this branch before expecting persistent Logs or Issues
-to appear. `version` in the application event comes from Cloudflare Version
-Metadata; local runs use `local`.
+The settings above were checked against the live Worker after deployment
+`1f8bd0b8-c348-441a-a36c-824e278a2e7b` reached 100% traffic. `version` in the
+application event comes from Cloudflare Version Metadata; local runs use
+`local`.
 
 Each handled request emits one allowlisted `event: "request"` summary with
 `route`, `method`, `status`, `code`, `duration_ms`, `upstream_outcome`,
@@ -300,12 +299,13 @@ independently of the application summary. Prior account observations included
 request URL/path/search fields and selected headers such as `user-agent`,
 `cf-ipcountry`, and `cf-ray`; IP/geolocation and request identifiers may also
 be present. Public location-ID paths and routine diagnostic metadata are not
-blanket blockers for this issue. Query-string redaction is enabled and
-Cloudflare documents it as removing query strings from request URLs, but
-verify the actual indexed fields (including any parsed `request.search` value)
-with a synthetic marker after deployment. Do not claim the full query context
-is redacted based only on the URL field. Never put credentials, request bodies,
-raw provider payloads, or unfiltered exception text in application logs.
+blanket blockers for this issue. On October 8, a synthetic invalid
+`GET /locations?q=A&obs_probe=redact-check-20261008-1611` returned HTTP 400.
+Its indexed event had `request.url=https://api.mohrworks.com/locations`, no
+query marker, and no `request.search` field. This verifies the observed fields
+for that request; it does not prove that every platform field or event type
+omits query data. Never put credentials, request bodies, raw provider payloads,
+or unfiltered exception text in application logs.
 
 **Access and retention:** Logs and Issues are visible to Cloudflare account
 members with access to the Worker/Observability dashboard; review account
@@ -324,9 +324,9 @@ error severity. The safe message includes the summary code, so `upstream_status`
 and `upstream_network` can form distinct groups while expected 4xx remain in
 the normal log channel. Local tests verify one error log per handled 5xx, safe
 message/stack handling, different grouping keys for different codes, and
-expected 4xx via `console.log`. The new Cloudflare grouping behavior has not
-yet been verified against a deployed build; do not use a public failure hook
-for testing.
+expected 4xx via `console.log`. The production Issues list was empty after the
+synthetic 400 probe, so the probe did not create an Issue. Production 5xx
+grouping remains unverified; do not use a public failure hook for testing.
 
 **Query Builder:** After Logs persistence is active, use the custom summary
 fields to verify and save these dashboard queries:
@@ -339,9 +339,19 @@ fields to verify and save these dashboard queries:
 | Upstream problems | `upstream_outcome = timeout OR upstream_outcome = status` | Count by `route` and `code` |
 | Rate-limit hits | `code = rate_limited` | Count by `route` |
 
-These are query specifications, not verified saved queries. Confirm the
-dashboard recognizes each field and aggregation, run them against this Worker,
-and save the resulting queries after the approved production rollout. When a
+All five query definitions (request counts, 5xx errors, p95 latency, upstream
+problems, and rate-limit hits) completed successfully through the production
+Logs Query API. The API response projection did not retain result rows, so this
+confirms query execution, not the returned counts or percentiles. Saving through
+the API failed with Cloudflare authentication error `10000`; the maintainer
+subsequently saved all five queries through the dashboard. On October 8, 2026,
+API readback confirmed the saved definitions use only `cloudflare-workers`,
+filter `$workers.scriptName = api` and `event = request` with AND, and have the
+filters, calculations, and grouping described above. Upstream problems uses
+the regex `^(timeout|status)$`; rate-limit hits uses `^rate_limited$` and counts
+client-limit rejections, not the separate `upstream_rate_limited` provider code.
+Open Observability's Saved Queries list to access them. The maintainer also
+confirmed the request-count visualization renders grouped results. When a
 request does not call a provider, `upstream_ms` is null and may be absent from
 indexed fields; exclude missing values from provider-latency aggregations.
 Check event-limit/sample indicators as well as the configured sampling rate.
@@ -358,9 +368,11 @@ document the absence and leave Issues notifications unconfigured.
 Application log sampling is configured to 1.0; invocation logs are off. Logs
 sampling controls event volume, not data redaction. Cloudflare can apply
 account-level event limits or head sampling when a daily cap is reached, so
-confirm the dashboard's actual ingestion and sampling status. Existing data may
-remain available until its retention period expires after Logs or Issues are
-disabled.
+confirm the dashboard's actual ingestion and sampling status. The queried
+24-hour usage response showed 31 `api` Worker log events for October 8, 2026,
+but did not include a sampling or dropped-event indicator; this count alone
+does not establish that all events were ingested. Existing data may remain
+available until its retention period expires after Logs or Issues are disabled.
 
 Native tracing remains disabled. Cloudflare's automatic span attributes can
 include incoming and outbound URL/query fields; weather URLs contain
