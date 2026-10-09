@@ -10,6 +10,9 @@ export default defineNuxtConfig({
     baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
       title: 'Weather Now — Live conditions and forecasts',
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
+      ],
       meta: [
         { name: 'description', content: 'Live conditions, hourly and 7-day forecasts, trends, and clothing guidance for any location.' },
         { name: 'theme-color', content: '#0c4a6e' },
