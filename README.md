@@ -140,6 +140,13 @@ steps, see its
 `worker` mode requires `NUXT_PUBLIC_API_BASE_URL` to be an absolute http(s) URL
 without query or fragment; the build fails otherwise. Unknown modes also fail.
 
+All three forecast paths use `shared/weather/query.ts` for the complete
+Open-Meteo query: coordinates, current/hourly/daily fields, automatic timezone,
+Unix timestamps, and a seven-day horizon. The server cache identity includes
+that complete query and requested coordinates with the `unix-iso-v1` marker
+and a five-minute TTL. The Worker retains its request-URL cache identity and
+60-second weather TTL.
+
 In `worker` mode, forecasts, location search, favorite-name localization, and IP
 location use the Worker. Search uses
 `GET /locations?q=<name>&language=en|de&count=1..100` (default language `en`,

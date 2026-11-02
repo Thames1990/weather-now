@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref, watch } from 'vue'
 import type { LocationResult, OpenMeteoWeatherResponse, WeatherResponse } from '../../shared/weather/types'
 import { normalizeWeather } from '../../shared/weather/normalize'
+import { createWeatherQuery } from '../../shared/weather/query'
 
 const upstream: OpenMeteoWeatherResponse = {
   timezone: 'Europe/Berlin',
@@ -81,9 +82,34 @@ describe('weather fetch timestamp contract', () => {
     }
     expect(await route.handler({})).toEqual(normalizeWeather(upstream))
     expect(fetch).toHaveBeenCalledWith('https://api.open-meteo.com/v1/forecast', expect.objectContaining({
-      query: expect.objectContaining({ timeformat: 'unixtime', timezone: 'auto' })
+      query: createWeatherQuery(location.latitude, location.longitude)
     }))
     expect(route.options.getKey({})).toMatch(/^unix-iso-v1:/)
+  })
+
+  it('identifies cached forecasts by the complete query and requested coordinates for five minutes', async () => {
+    let query = { latitude: '52.520', longitude: '13.410' }
+    vi.stubGlobal('getQuery', () => query)
+    vi.stubGlobal('defineCachedEventHandler', (handler: unknown, options: unknown) => ({ handler, options }))
+
+    const route = (await import('../../server/api/weather.get')).default as unknown as {
+      options: { maxAge: number; getKey: (event: unknown) => string }
+    }
+    const key = route.options.getKey({})
+    expect(key).toMatch(/^unix-iso-v1:/)
+    for (const value of [
+      '52.520', '13.410',
+      'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m',
+      'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m',
+      'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset',
+      'timezone', 'auto', 'timeformat', 'unixtime', 'forecast_days', '7'
+    ]) expect(key).toContain(value)
+    expect(route.options.getKey({})).toBe(key)
+    query = { latitude: '52.521', longitude: '13.410' }
+    expect(route.options.getKey({})).not.toBe(key)
+    query = { latitude: '52.520', longitude: '13.411' }
+    expect(route.options.getKey({})).not.toBe(key)
+    expect(route.options.maxAge).toBe(300)
   })
 
   it.each(['server', 'external'])('preserves the ISO app model in %s mode', async (mode) => {
@@ -105,7 +131,7 @@ describe('weather fetch timestamp contract', () => {
     expect(state.errorMessage.value).toBe('')
     if (mode === 'external') {
       expect(fetch).toHaveBeenCalledWith('https://api.open-meteo.com/v1/forecast', expect.objectContaining({
-        query: expect.objectContaining({ timeformat: 'unixtime', timezone: 'auto' })
+        query: createWeatherQuery(location.latitude, location.longitude)
       }))
     } else {
       expect(fetch).toHaveBeenCalledWith('/api/weather', { query: { latitude: 52.52, longitude: 13.41 } })

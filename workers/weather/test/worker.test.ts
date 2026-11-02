@@ -3,6 +3,7 @@ import { handleRequest } from '../src/index'
 import type { Env } from '../src/index'
 import { UPSTREAM_TIMEOUT_MS } from '../src/upstream'
 import { normalizeWeather } from '../../../shared/weather/normalize'
+import { createWeatherQuery } from '../../../shared/weather/query'
 
 const timestamp = 1_790_000_000
 const weather = {
@@ -159,6 +160,9 @@ describe('Worker contract', () => {
     expect(upstream.searchParams.get('forecast_days')).toBe('7')
     expect(upstream.searchParams.get('timeformat')).toBe('unixtime')
     expect(upstream.searchParams.get('longitude')).toBe('13.4')
+    expect(Object.fromEntries(upstream.searchParams)).toEqual(
+      Object.fromEntries(Object.entries(createWeatherQuery(52.52, 13.4)).map(([key, value]) => [key, String(value)]))
+    )
     expect(options?.redirect).toBe('manual')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
