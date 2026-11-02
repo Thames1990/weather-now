@@ -2,6 +2,7 @@ import type { DailyForecast, HourlyForecast, LocationResult, WeatherResponse } f
 import { resolveCityIdentity } from '~/utils/locations'
 import { parseGeocodingResults, parseIpLocationResult, parseOpenMeteoWeatherResponse, parseReverseGeocodeResult } from '#shared/weather/provider-validation'
 import { normalizeWeather } from '#shared/weather/normalize'
+import { createWeatherQuery } from '#shared/weather/query'
 import { selectHourlyForecast, weatherEffect, weatherIcon, weatherLabel } from '~/utils/weather'
 import { apiErrorMessage } from '~/utils/worker-api'
 import { useWorkerApi } from '~/composables/useWorkerApi'
@@ -25,9 +26,6 @@ const loadingLocation: LocationResult = {
   timezone: 'auto'
 }
 const savedLocationKey = 'weather-now:last-location'
-const currentParams = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
-const hourlyParams = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m'
-const dailyParams = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
 
 export function useWeather() {
   const { locale } = useI18n()
@@ -80,16 +78,7 @@ export function useWeather() {
     }
 
     const payload = await $fetch<unknown>('https://api.open-meteo.com/v1/forecast', {
-      query: {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        current: currentParams,
-        hourly: hourlyParams,
-        daily: dailyParams,
-        timezone: 'auto',
-        timeformat: 'unixtime',
-        forecast_days: 7
-      }
+      query: createWeatherQuery(location.latitude, location.longitude)
     })
     return normalizeWeather(parseOpenMeteoWeatherResponse(payload))
   }

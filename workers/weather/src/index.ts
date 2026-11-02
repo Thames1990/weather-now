@@ -1,5 +1,6 @@
 import { isValidCoordinates, parseGeocodingResults, parseOpenMeteoWeatherResponse } from '../../../shared/weather/provider-validation'
 import { normalizeWeather } from '../../../shared/weather/normalize'
+import { createWeatherQuery } from '../../../shared/weather/query'
 import { ApiError, fetchJson } from './upstream'
 
 export interface Env {
@@ -11,9 +12,6 @@ export interface Env {
 const BROWSER_ORIGIN = 'https://weather.mohrworks.com'
 const WEATHER_CACHE_TTL_SECONDS = 60
 const GEOCODING_CACHE_TTL_SECONDS = 300
-const current = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m'
-const hourly = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m'
-const daily = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunshine_duration,sunrise,sunset'
 
 function validateQuery(params: URLSearchParams, allowed: string[]): void {
   for (const key of params.keys()) {
@@ -79,10 +77,9 @@ function route(url: URL): Route {
       throw new ApiError(400, 'invalid_request', 'Coordinates are outside supported bounds')
     }
     const upstream = new URL('https://api.open-meteo.com/v1/forecast')
-    upstream.search = new URLSearchParams({
-      latitude: String(latitude), longitude: String(longitude),
-      current, hourly, daily, timezone: 'auto', timeformat: 'unixtime', forecast_days: '7'
-    }).toString()
+    upstream.search = new URLSearchParams(
+      Object.entries(createWeatherQuery(latitude, longitude)).map(([key, value]) => [key, String(value)])
+    ).toString()
     return { kind: 'weather', upstream }
   }
 
