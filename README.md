@@ -121,8 +121,9 @@ check lint, unit tests, a Playwright smoke test across all configured browser
 projects, and a static production build. Pushes and manual runs deploy to
 https://weather.mohrworks.com/ only after all checks pass;
 pull requests never deploy. The workflow builds for the site root in `worker`
-API mode with `NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com`, so forecasts
-and city search go through the [weather Worker](workers/weather/README.md).
+API mode with
+`NUXT_PUBLIC_API_BASE_URL=https://api.weather.mohrworks.com`, so forecasts and
+city search go through the [weather Worker](workers/weather/README.md).
 For Worker observability settings, data handling, manual checks, and rollback
 steps, see its
 [observability runbook](workers/weather/README.md#observability-and-operations).
@@ -193,7 +194,7 @@ The focused Playwright smoke command also runs in pull-request CI. Use
 To reproduce the GitHub Pages static production build:
 
 ```bash
-NUXT_PUBLIC_API_MODE=worker NUXT_PUBLIC_API_BASE_URL=https://api.mohrworks.com pnpm generate
+NUXT_PUBLIC_API_MODE=worker NUXT_PUBLIC_API_BASE_URL=https://api.weather.mohrworks.com pnpm generate
 ```
 
 To run browser tests against a served production build instead of the development

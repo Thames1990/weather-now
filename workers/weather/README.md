@@ -1,10 +1,10 @@
 # Weather API Worker
 
-Separate Cloudflare Worker for the existing **api** service at
-**https://api.mohrworks.com**. The Pages frontend, Nuxt server routes, and
-`NUXT_PUBLIC_API_MODE=external` remain unchanged. The backend is active in
-production as version `1f8bd0b8-c348-441a-a36c-824e278a2e7b` (October 8, 2026),
-with 100% traffic on the existing custom domain. Production observability was
+Separate Cloudflare Worker for the existing **api** service. Wrangler assigns
+the custom domain **https://api.weather.mohrworks.com**. The Pages frontend,
+Nuxt server routes, and `NUXT_PUBLIC_API_MODE=external` remain unchanged. The
+backend was deployed as version `1f8bd0b8-c348-441a-a36c-824e278a2e7b` on
+October 8, 2026, with 100% traffic on the then-current custom domain. Production observability was
 verified on October 8, 2026: Logs persistence and Issues are enabled, query
 redaction is enabled, invocation logs and traces are disabled, and the
 synthetic redaction probe described below returned HTTP 400 without exposing
@@ -386,7 +386,7 @@ application `upstream_ms` remains available in the custom summary.
 
 ### Manual checks and recovery
 
-- Check `https://api.mohrworks.com/health`; expect HTTP 200 and
+- Check `https://api.weather.mohrworks.com/health`; expect HTTP 200 and
   `{"status":"ok"}`.
 - Load `https://weather.mohrworks.com/` and verify the dashboard loads.
 - Check [Open-Meteo status](https://status.open-meteo.com/) for provider
@@ -433,10 +433,11 @@ Configure the GitHub **production** Environment with
 Do not configure required reviewers if deployments should remain automatic.
 Create the token for the Cloudflare account containing the existing **api**
 Worker, scoped to that Worker with the **Editor** role (legacy permission:
-**Workers Scripts: Edit**). Do not grant Workers Routes Write: the Wrangler
-configuration intentionally leaves the existing dashboard-managed
-`api.mohrworks.com` custom-domain attachment unchanged. Keep these credentials
-out of repository-level secrets and local files.
+**Workers Scripts: Edit**), and grant **Workers Routes Write** for the
+`mohrworks.com` zone. Wrangler manages the
+`api.weather.mohrworks.com` custom-domain attachment from `wrangler.jsonc`;
+Cloudflare creates its DNS record and certificate. Keep these credentials out
+of repository-level secrets and local files.
 
 To deploy through a pull request, wait for its checks and merge it; to deploy
 through a direct push, push the Worker change to `main`. Both paths require
@@ -451,6 +452,6 @@ Use the Cloudflare dashboard to roll back to a recorded healthy version, or
 use an authorized operator's Wrangler session:
 `pnpm --dir workers/weather exec wrangler rollback <VERSION_ID>`.
 Treat rollback as an emergency recovery action, not a routine deployment.
-Verify `/health` and the unchanged hostname afterward. Rollback restores code,
-not necessarily changed bindings/settings; restore any settings changed during
-rollout separately.
+Verify `/health` at `https://api.weather.mohrworks.com` afterward. Rollback
+restores code, not necessarily changed bindings/settings; restore any settings
+changed during rollout separately.
