@@ -1,7 +1,7 @@
 # Weather API Worker
 
 Separate Cloudflare Worker for the existing **api** service. Wrangler assigns
-the custom domain **https://api.weather.mohrworks.com**. The Pages frontend,
+the custom domain **https://api.mohrworks.com**. The Pages frontend,
 Nuxt server routes, and `NUXT_PUBLIC_API_MODE=external` remain unchanged. The
 backend was deployed as version `1f8bd0b8-c348-441a-a36c-824e278a2e7b` on
 October 8, 2026, with 100% traffic on the then-current custom domain. Production observability was
@@ -386,7 +386,7 @@ application `upstream_ms` remains available in the custom summary.
 
 ### Manual checks and recovery
 
-- Check `https://api.weather.mohrworks.com/health`; expect HTTP 200 and
+- Check `https://api.mohrworks.com/health`; expect HTTP 200 and
   `{"status":"ok"}`.
 - Load `https://weather.mohrworks.com/` and verify the dashboard loads.
 - Check [Open-Meteo status](https://status.open-meteo.com/) for provider
@@ -435,9 +435,14 @@ Create the token for the Cloudflare account containing the existing **api**
 Worker, scoped to that Worker with the **Editor** role (legacy permission:
 **Workers Scripts: Edit**), and grant **Workers Routes Write** for the
 `mohrworks.com` zone. Wrangler manages the
-`api.weather.mohrworks.com` custom-domain attachment from `wrangler.jsonc`;
+`api.mohrworks.com` custom-domain attachment from `wrangler.jsonc`;
 Cloudflare creates its DNS record and certificate. Keep these credentials out
 of repository-level secrets and local files.
+
+Keep the API hostname at one subdomain level for the no-cost hosting setup:
+the zone's Universal SSL wildcard `*.mohrworks.com` covers `api.mohrworks.com`,
+but not nested hostnames such as `api.weather.mohrworks.com`. Verify HTTPS
+certificate coverage before changing the production frontend's API URL.
 
 To deploy through a pull request, wait for its checks and merge it; to deploy
 through a direct push, push the Worker change to `main`. Both paths require
@@ -452,6 +457,6 @@ Use the Cloudflare dashboard to roll back to a recorded healthy version, or
 use an authorized operator's Wrangler session:
 `pnpm --dir workers/weather exec wrangler rollback <VERSION_ID>`.
 Treat rollback as an emergency recovery action, not a routine deployment.
-Verify `/health` at `https://api.weather.mohrworks.com` afterward. Rollback
+Verify `/health` at `https://api.mohrworks.com` afterward. Rollback
 restores code, not necessarily changed bindings/settings; restore any settings
 changed during rollout separately.
