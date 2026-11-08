@@ -42,12 +42,12 @@ describe('API configuration', () => {
   })
 
   it('requires an absolute base URL in worker mode and drops trailing slashes', () => {
-    expect(resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'https://api.weather.mohrworks.com/' }))
-      .toEqual({ apiMode: 'worker', apiBaseUrl: 'https://api.weather.mohrworks.com' })
+    expect(resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'https://api.mohrworks.com/' }))
+      .toEqual({ apiMode: 'worker', apiBaseUrl: 'https://api.mohrworks.com' })
     expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker' })).toThrow(/NUXT_PUBLIC_API_BASE_URL/)
-    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'api.weather.mohrworks.com' })).toThrow(/absolute URL/)
-    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'ftp://api.weather.mohrworks.com' })).toThrow(/http or https/)
-    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'https://api.weather.mohrworks.com/?key=1' })).toThrow(/query string/)
+    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'api.mohrworks.com' })).toThrow(/absolute URL/)
+    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'ftp://api.mohrworks.com' })).toThrow(/http or https/)
+    expect(() => resolveApiConfig({ NUXT_PUBLIC_API_MODE: 'worker', NUXT_PUBLIC_API_BASE_URL: 'https://api.mohrworks.com/?key=1' })).toThrow(/query string/)
   })
 
   it('rejects unknown API modes instead of silently falling back', () => {

@@ -35,7 +35,7 @@ const env: Env = {
   UPSTREAM_RATE_LIMITER: { limit: upstreamLimit },
   CF_VERSION_METADATA: { id: 'test-version' }
 }
-const request = (path: string, init?: RequestInit) => new Request(`https://api.weather.mohrworks.com${path}`, init)
+const request = (path: string, init?: RequestInit) => new Request(`https://api.mohrworks.com${path}`, init)
 
 beforeEach(() => {
   clientLimit.mockResolvedValue({ success: true })
